@@ -16,6 +16,7 @@ import {
 } from "@/lib/day-details-utils"
 import { RecommendationCards } from "@/components/day-recommendation-cards"
 import { ConnectionsTable } from "@/components/day-connections-table"
+import { PriceHistoryChart, type PriceHistoryEntry } from "@/components/price-history-chart"
 
 interface Interval {
   preis: number
@@ -25,6 +26,7 @@ interface Interval {
   ankunftsOrt: string
   info: string
   umstiegsAnzahl?: number
+  priceHistory?: PriceHistoryEntry[]
 }
 
 interface IntervalData {
@@ -36,6 +38,7 @@ interface IntervalData {
   info: string
   umstiegsAnzahl?: number
   isCheapestPerInterval?: boolean
+  priceHistory?: PriceHistoryEntry[]
 }
 
 interface PriceData {
@@ -43,6 +46,7 @@ interface PriceData {
   info: string
   abfahrtsZeitpunkt: string
   ankunftsZeitpunkt: string
+  priceHistory?: PriceHistoryEntry[]
   allIntervals?: IntervalData[]
 }
 
@@ -398,6 +402,11 @@ export function DayDetailsModal({
                   )}
                 </div>
               </div>
+
+              {/* Preishistorie für den Tag */}
+              {data.priceHistory && data.priceHistory.length > 1 && (
+                <PriceHistoryChart history={data.priceHistory} title="Preisentwicklung für diesen Tag" />
+              )}
 
               {/* Top-Optionen: Bestpreis vs. KI-Empfehlung */}
               <RecommendationCards

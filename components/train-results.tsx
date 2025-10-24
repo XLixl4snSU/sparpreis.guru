@@ -26,11 +26,17 @@ interface TrainResultsProps {
   searchParams: SearchParams
 }
 
+interface PriceHistoryEntry {
+  preis: number
+  recorded_at: number
+}
+
 interface PriceData {
   preis: number
   info: string
   abfahrtsZeitpunkt: string
   ankunftsZeitpunkt: string
+  priceHistory?: PriceHistoryEntry[]
   allIntervals?: Array<{
     preis: number
     abfahrtsZeitpunkt: string
@@ -40,6 +46,7 @@ interface PriceData {
     info: string
     umstiegsAnzahl?: number
     isCheapestPerInterval?: boolean
+    priceHistory?: PriceHistoryEntry[]
   }>
 }
 

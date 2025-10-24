@@ -19,10 +19,17 @@ export function getDiscountCode(ermaessigungArt: string, ermaessigungKlasse: str
   return "0"
 }
 
-export function getRParam(alter: string, ermaessigungArt: string, ermaessigungKlasse: string, klasse: string) {
-  let personCode = getPersonCode(alter)
-  let discountCode = getDiscountCode(ermaessigungArt, ermaessigungKlasse)
-  return `${personCode}:${discountCode}:${klasse}:1`
+export function getRParam(
+  alter: string,
+  ermaessigungArt: string,
+  ermaessigungKlasse: string,
+  klasse: string
+) {
+  const personCode = getPersonCode(alter)
+  const discountCode = getDiscountCode(ermaessigungArt, ermaessigungKlasse)
+  // KLASSENLOS if discountCode is "16" (KEINE_ERMAESSIGUNG)
+  const klasseValue = discountCode === "16" ? "KLASSENLOS" : klasse
+  return `${personCode}:${discountCode}:${klasseValue}:1`
 }
 
 export function createBookingLink(
@@ -43,9 +50,19 @@ export function createBookingLink(
   }
   const klasseParam = klasse === "KLASSE_1" ? "1" : "2"
   const direktverbindung = maximaleUmstiege === "0" ? "true" : "false"
-  const departureTime = encodeURIComponent(abfahrtsZeitpunkt)
   const rParam = getRParam(alter, ermaessigungArt, ermaessigungKlasse, klasse)
-  let url = `https://www.bahn.de/buchung/fahrplan/suche#sts=true&kl=${klasseParam}&r=${rParam}&hd=${departureTime}&so=${encodeURIComponent(startStationName)}&zo=${encodeURIComponent(zielStationName)}&soid=${encodeURIComponent(startStationId)}&zoid=${encodeURIComponent(zielStationId)}&bp=true&d=${direktverbindung}`
+  // Departure time should not be encoded
+  let url = `https://www.bahn.de/buchung/fahrplan/suche#sts=true`
+  url += `&so=${encodeURIComponent(startStationName)}`
+  url += `&zo=${encodeURIComponent(zielStationName)}`
+  url += `&kl=${klasseParam}`
+  url += `&r=${rParam}`
+  url += `&soid=${encodeURIComponent(startStationId)}`
+  url += `&zoid=${encodeURIComponent(zielStationId)}`
+  url += `&hd=${abfahrtsZeitpunkt}`
+  url += `&hza=D&hz=%5B%5D&ar=false&s=true`
+  url += `&d=${direktverbindung}`
+  url += `&vm=00,01,02,03,04,05,06,07,08,09&fm=false&bp=true&dlt=false&dltv=false`
   if (umstiegszeit && umstiegszeit !== "normal") {
     url += `&mud=${umstiegszeit}`
   }

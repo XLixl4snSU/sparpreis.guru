@@ -2,9 +2,10 @@ import React, { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Train, Shuffle, TrendingUp, ArrowRight, Euro, Info, Star, Clock } from "lucide-react"
+import { Train, Shuffle, TrendingUp, ArrowRight, Euro, Info, Star, Clock, Minus, TrendingDown } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { VehicleTypesSummary } from "@/components/vehicle-types-summary"
+import { PriceHistoryChart } from "@/components/price-history-chart"
 
 // Helper function to calculate transfer time between connections
 function calculateTransferTime(fromArrival: string, toDepature: string): number {
@@ -559,6 +560,19 @@ export function ConnectionsTable({
                         <div>
                           <span className="text-xs text-gray-500 font-semibold">Preis</span><br />
                           <span className={`font-bold text-base px-2 py-1 rounded ${getIntervalPriceColor(interval.preis)}`}>{interval.preis}€</span>
+                          {/* Historie-Button für einzelne Verbindung */}
+                          {interval.priceHistory && interval.priceHistory.length > 1 && (
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button variant="ghost" size="icon" className="ml-1 h-6 w-6">
+                                  {getTrendIcon(interval.priceHistory)}
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-[520px]">
+                                <PriceHistoryChart history={interval.priceHistory} title="Preisentwicklung dieser Verbindung" />
+                              </PopoverContent>
+                            </Popover>
+                          )}
                         </div>
                         <div className="mt-2">
                           {bookingLink && (
@@ -566,7 +580,7 @@ export function ConnectionsTable({
                               size="sm"
                               variant="default"
                               className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 whitespace-nowrap"
-                              title="Buchen"
+                             
                               onClick={() => window.open(bookingLink, "_blank")}
                             >
                               <Train className="h-4 w-4" />
@@ -705,7 +719,22 @@ export function ConnectionsTable({
                     </div>
                     <div>
                       <div className="text-gray-600 mb-1">Preis</div>
-                      <div className={`font-bold text-lg px-2 py-1 rounded ${getIntervalPriceColor(interval.preis)}`}>{interval.preis}€</div>
+                      <div className="flex items-center">
+                        <div className={`font-bold text-lg px-2 py-1 rounded ${getIntervalPriceColor(interval.preis)}`}>{interval.preis}€</div>
+                        {/* Historie-Button für einzelne Verbindung */}
+                        {interval.priceHistory && interval.priceHistory.length > 1 && (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="ghost" size="icon" className="ml-1 h-6 w-6">
+                                {getTrendIcon(interval.priceHistory)}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[520px]">
+                              <PriceHistoryChart history={interval.priceHistory} title="Preisentwicklung dieser Verbindung" />
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      </div>
                     </div>
                     {bookingLink && (
                       <Button
@@ -746,4 +775,13 @@ export function ConnectionsTable({
       </div>
     </div>
   )
+}
+
+function getTrendIcon(history?: { preis: number }[]) {
+  if (!history || history.length < 2) return <Minus className="h-3 w-3 text-gray-400" />
+  const firstPrice = history[0].preis
+  const lastPrice = history[history.length - 1].preis
+  if (lastPrice > firstPrice) return <TrendingUp className="h-3 w-3 text-red-500" />
+  if (lastPrice < firstPrice) return <TrendingDown className="h-3 w-3 text-green-500" />
+  return <Minus className="h-3 w-3 text-gray-400" />
 }

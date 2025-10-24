@@ -48,6 +48,32 @@ export async function POST(request: NextRequest) {
     
     console.log(`🛑 Session ${sessionId} cancelled (reason: ${reason})`)
 
+    // Markiere die Session als abgeschlossen in der Progress-Verfolgung
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+      await fetch(`${baseUrl}/api/search-progress`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          currentDay: 0,
+          totalDays: 0,
+          currentDate: "",
+          isComplete: true, // Markiere als abgeschlossen
+          uncachedDays: 0,
+          cachedDays: 0,
+          averageUncachedResponseTime: 0,
+          averageCachedResponseTime: 0,
+          queueSize: 0,
+          activeRequests: 0,
+        }),
+      })
+      console.log(`✅ Progress marked as complete for cancelled session ${sessionId}`)
+    } catch (progressError) {
+      console.error(`⚠️ Failed to update progress for cancelled session ${sessionId}:`, progressError)
+      // Nicht kritisch - Cancel funktioniert trotzdem
+    }
+
     return NextResponse.json({ 
       success: true, 
       sessionId,
