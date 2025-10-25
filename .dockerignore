@@ -4,3 +4,4 @@ dist
 .git
 Dockerfile
 README.md
+data
