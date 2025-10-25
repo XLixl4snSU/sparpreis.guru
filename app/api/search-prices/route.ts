@@ -6,6 +6,10 @@ import { generateCacheKey, getCachedResult, getCacheSize, type PriceHistoryEntry
 import { recommendBestPrice } from '@/lib/recommendation-engine'
 import { metricsCollector } from '@/app/api/metrics/collector'
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+
 // Hilfsfunktion für lokales Datum im Format YYYY-MM-DD
 function formatDateKey(date: Date) {
   const year = date.getFullYear()

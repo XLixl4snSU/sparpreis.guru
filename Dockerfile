@@ -1,36 +1,25 @@
-# 1. Basis-Image
-FROM node:20-alpine AS builder
-
-# pnpm installieren 
-RUN npm install -g pnpm
-
-# 2. Arbeitsverzeichnis
+# ---- Builder ----
+FROM node:20-bookworm-slim AS build
+RUN corepack enable
 WORKDIR /app
 
-# Nur package.json und pnpm-lock.yaml zuerst kopieren für besseren Cache
+# nur für native Builds nötig
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --unsafe-perm
 
-# 3. Abhängigkeiten installieren
-RUN pnpm install --frozen-lockfile
-
-# 4. Quellcode kopieren und builden
 COPY . .
 RUN pnpm build
 
-# 5. Production-Image
-FROM node:20-alpine
-
+# ---- Runtime ----
+FROM node:20-bookworm-slim
+RUN corepack enable
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 
-# pnpm im Production-Image installieren
-RUN npm install -g pnpm
-
-COPY --from=builder /app ./
-
-ENV NODE_ENV=production
-
-# Port für Next.js
+COPY --from=build /app ./
 EXPOSE 3000
-
-# Startbefehl
-CMD ["pnpm", "start"]
+CMD ["pnpm","start"]

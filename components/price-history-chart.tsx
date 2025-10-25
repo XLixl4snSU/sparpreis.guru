@@ -97,7 +97,12 @@ export function PriceHistoryChart({ history, title }: PriceHistoryChartProps) {
                 textAnchor={hasMultipleEntriesPerDay ? "end" : "middle"}
                 height={hasMultipleEntriesPerDay ? 60 : 30}
               />
-              <YAxis domain={yDomain} fontSize={12} tick={{ fill: '#666' }} tickFormatter={(value) => `${Number(value).toFixed(2)}€`} />
+              <YAxis
+                domain={yDomain}
+                fontSize={12}
+                tick={{ fill: '#666' }}
+                tickFormatter={(value) => `${Number(value).toFixed(0)}€`}
+              />
               <Tooltip
                 contentStyle={{
                   backgroundColor: 'rgba(255, 255, 255, 0.9)',
