@@ -378,31 +378,51 @@ export function DayDetailsModal({
             <div className="space-y-6">
               {/* Strecken-Info Header */}
               <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg relative">
+                {/* Datenstand-Anzeige: Mobile oben in der Box, Desktop oben rechts */}
+                {dataAge && (
+                  <>
+                    {/* Desktop: oben rechts */}
+                    <div className="hidden sm:block absolute top-3 right-3">
+                      <div
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full border ${dataAge.color} bg-white/70 shadow-sm text-xs font-medium`}
+                        style={{
+                          borderWidth: 1,
+                          minHeight: 28,
+                          lineHeight: 1.2,
+                          backdropFilter: 'blur(2px)',
+                        }}
+                      >
+                        <Clock className={`h-3 w-3 ${dataAge.color}`} />
+                        <span className={dataAge.color}>
+                          Stand: {dataAge.timeStr} ({dataAge.text})
+                        </span>
+                      </div>
+                    </div>
+                    {/* Mobile: oben in der Box, über den Stationsnamen */}
+                    <div className="block sm:hidden mb-2">
+                      <div
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${dataAge.color} bg-white/70 shadow-sm text-xs font-medium max-w-full whitespace-nowrap`}
+                        style={{
+                          borderWidth: 1,
+                          minHeight: 28,
+                          lineHeight: 1.2,
+                          backdropFilter: 'blur(2px)',
+                        }}
+                      >
+                        <Clock className={`h-3 w-3 ${dataAge.color}`} />
+                        <span className={dataAge.color}>
+                          Stand: {dataAge.timeStr} ({dataAge.text})
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                )}
                 <div className="flex items-center gap-2 text-blue-700 text-lg font-semibold mb-3">
                   <MapPin className="h-5 w-5" />
                   <span>{startStation?.name}</span>
                   <ArrowRight className="h-5 w-5 text-gray-400" />
                   <span>{zielStation?.name}</span>
                 </div>
-                {/* Datenstand-Anzeige oben rechts in einer dezenten, kleinen Box */}
-                {dataAge && (
-                  <div className="absolute top-3 right-3">
-                    <div
-                      className={`flex items-center gap-1 px-2 py-0.5 rounded-full border ${dataAge.color} bg-white/70 shadow-sm text-xs font-medium`}
-                      style={{
-                        borderWidth: 1,
-                        minHeight: 28,
-                        lineHeight: 1.2,
-                        backdropFilter: 'blur(2px)',
-                      }}
-                    >
-                      <Clock className={`h-3 w-3 ${dataAge.color}`} />
-                      <span className={dataAge.color}>
-                        Stand: {dataAge.timeStr} ({dataAge.text})
-                      </span>
-                    </div>
-                  </div>
-                )}
                 {/* Gruppe 1: Reisende & Ticket */}
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-700">
                   <div className="flex items-center gap-1">
