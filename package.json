@@ -54,7 +54,7 @@
     "input-otp": "1.4.2",
     "ip-cidr": "^4.0.2",
     "lucide-react": "^0.539.0",
-    "next": "15.5.7",
+    "next": "15.5.9",
     "next-themes": "^0.4.6",
     "postcss": "^8.5.6",
     "react": "^19.2.1",
