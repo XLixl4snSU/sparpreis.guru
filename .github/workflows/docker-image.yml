@@ -72,6 +72,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set GHCR_REPO (lowercase)
+        run: echo "GHCR_REPO=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
       # 5) Tags/Labels
       - name: Extract metadata (tags, labels)
         id: meta
@@ -79,7 +82,7 @@ jobs:
         with:
           images: |
             butti/sparpreis-guru
-            ghcr.io/${{ github.repository_owner.toLowerCase() }}/sparpreis-guru
+            ghcr.io/${{ env.GHCR_REPO }}/sparpreis-guru
           flavor: |
             latest=true
           tags: |
@@ -154,6 +157,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set GHCR_REPO (lowercase)
+        run: echo "GHCR_REPO=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
       - name: Build and push Docker image (dev)
         uses: docker/build-push-action@v6
         with:
@@ -162,6 +168,6 @@ jobs:
           platforms: linux/amd64
           tags: |
             butti/sparpreis-guru:dev
-            ghcr.io/${{ github.repository_owner.toLowerCase() }}/sparpreis-guru:dev
+            ghcr.io/${{ env.GHCR_REPO }}/sparpreis-guru:dev
           cache-from: type=gha
           cache-to: type=gha,mode=max
