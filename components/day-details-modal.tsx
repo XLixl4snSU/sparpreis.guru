@@ -1,6 +1,7 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useRef } from "react"
+import { flushSync } from "react-dom" // Import flushSync
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -65,6 +66,22 @@ interface DayDetailsModalProps {
 
 const weekdays = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"]
 
+// Variants für die Slide-Animation definieren
+const variants = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? 40 : -40,
+    opacity: 0,
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+  },
+  exit: (direction: number) => ({
+    x: direction < 0 ? 40 : -40,
+    opacity: 0,
+  }),
+}
+
 export function DayDetailsModal({
   isOpen,
   onClose,
@@ -80,31 +97,46 @@ export function DayDetailsModal({
   const [showAllJourneyDetails, setShowAllJourneyDetails] = useState<boolean>(false)
   const [sortKey, setSortKey] = useState<'preis' | 'abfahrt' | 'ankunft' | 'umstiege' | 'dauer'>('preis')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [animationDirection, setAnimationDirection] = useState<1 | -1>(1)
+  
+  // Einfacher State für die Richtung reicht aus, wenn custom Prop genutzt wird
+  const [direction, setDirection] = useState(0)
   
   // Swipe-Handling für Tag-Navigation im Modal
-  const touchStartX = React.useRef<number | null>(null)
-  const previousDate = React.useRef<string | null>(null)
+  const touchStartX = useRef<number | null>(null)
+  const previousDate = useRef<string | null>(null)
   
-  // Keyboard-Handling für Tag-Navigation im Modal
-  React.useEffect(() => {
-    if (!isOpen) return
-    
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft' && onNavigateDay) {
-        setAnimationDirection(-1)
-        onNavigateDay(-1)
-      } else if (e.key === 'ArrowRight' && onNavigateDay) {
-        setAnimationDirection(1)
-        onNavigateDay(1)
-      }
+  // Navigations-Handler
+  const handleNavigate = (newDirection: number) => {
+    if (!onNavigateDay) return
+    // flushSync erzwingt ein sofortiges Update des DOMs/States vor dem Callback
+    flushSync(() => {
+      setDirection(newDirection)
+    })
+    onNavigateDay(newDirection)
+  }
+  
+  // Keyboard-Handling direkt am DialogContent
+  // Verhindert Konflikte mit globalen Listenern der Eltern-Komponente
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      e.stopPropagation() // Stoppt React Event Bubbling
+      e.nativeEvent.stopImmediatePropagation() // Stoppt natives Bubbling zum Document
+      handleNavigate(-1)
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      e.stopPropagation()
+      e.nativeEvent.stopImmediatePropagation()
+      handleNavigate(1)
     }
-    
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onNavigateDay])
+  }
+  
+  // Entferne den useEffect für globalen Keydown Listener, da wir jetzt onKeyDown nutzen
+  /* 
+  React.useEffect(() => { ... }) entfernt
+  */
 
-  // Track animation direction based on date changes
+  // Track animation direction based on date changes (Fallback für externe Änderungen)
   React.useEffect(() => {
     if (!date || !dayKeys.length || !previousDate.current) {
       previousDate.current = date
@@ -115,7 +147,7 @@ export function DayDetailsModal({
     const prevIdx = dayKeys.indexOf(previousDate.current)
     
     if (currentIdx !== -1 && prevIdx !== -1 && currentIdx !== prevIdx) {
-      setAnimationDirection(currentIdx > prevIdx ? 1 : -1)
+      setDirection(currentIdx > prevIdx ? 1 : -1)
     }
     
     previousDate.current = date
@@ -129,16 +161,10 @@ export function DayDetailsModal({
   }
   
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX.current === null || !onNavigateDay) return
+    if (touchStartX.current === null) return
     const deltaX = e.changedTouches[0].clientX - touchStartX.current
     if (Math.abs(deltaX) > 100) {
-      if (deltaX < 0) {
-        setAnimationDirection(1)
-        onNavigateDay(1)
-      } else {
-        setAnimationDirection(-1)
-        onNavigateDay(-1)
-      }
+      handleNavigate(deltaX < 0 ? 1 : -1)
     }
     touchStartX.current = null
   }
@@ -233,7 +259,7 @@ export function DayDetailsModal({
     return "text-orange-600 bg-orange-50"
   }
 
-  const swipeDirection = animationDirection
+  const swipeDirection = direction
 
   // Empfohlene Fahrt immer oben einfügen, falls nicht enthalten
   let displayedIntervalsWithRecommendation = displayedIntervals
@@ -277,6 +303,7 @@ export function DayDetailsModal({
         className="max-w-6xl max-h-[95vh] overflow-y-auto sm:px-4 px-3 sm:m-0 rounded-lg shadow-lg border bg-white"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
+        onKeyDown={handleKeyDown} // Handler direkt am Content
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
@@ -295,12 +322,8 @@ export function DayDetailsModal({
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => {
-                  setAnimationDirection(-1)
-                  onNavigateDay(-1)
-                }}
-                disabled={!date || dayKeys.indexOf(date) <= 0
-                }
+                onClick={() => handleNavigate(-1)}
+                disabled={!date || dayKeys.indexOf(date) <= 0}
                 className="h-8 px-3"
                 title="Vorheriger Tag (Pfeil links)"
               >
@@ -313,10 +336,7 @@ export function DayDetailsModal({
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => {
-                  setAnimationDirection(1)
-                  onNavigateDay(1)
-                }}
+                onClick={() => handleNavigate(1)}
                 disabled={!date || dayKeys.indexOf(date) >= dayKeys.length - 1}
                 className="h-8 px-3"
                 title="Nächster Tag (Pfeil rechts)"
@@ -330,10 +350,7 @@ export function DayDetailsModal({
               <Button 
                 variant="outline" 
                 size="icon"
-                onClick={() => {
-                  setAnimationDirection(-1)
-                  onNavigateDay(-1)
-                }}
+                onClick={() => handleNavigate(-1)}
                 disabled={!date || dayKeys.indexOf(date) <= 0}
                 className="h-8 w-8"
                 title="Vorheriger Tag"
@@ -346,10 +363,7 @@ export function DayDetailsModal({
               <Button 
                 variant="outline" 
                 size="icon"
-                onClick={() => {
-                  setAnimationDirection(1)
-                  onNavigateDay(1)
-                }}
+                onClick={() => handleNavigate(1)}
                 disabled={!date || dayKeys.indexOf(date) >= dayKeys.length - 1}
                 className="h-8 w-8"
                 title="Nächster Tag"
@@ -367,169 +381,175 @@ export function DayDetailsModal({
           </div>
         )}
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={date}
-            initial={{ opacity: 0, x: animationDirection * 40 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: animationDirection * -40 }}
-            transition={{ duration: 0.25 }}
-          >
-            <div className="space-y-6">
-              {/* Strecken-Info Header */}
-              <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg relative">
-                {/* Datenstand-Anzeige: Mobile oben in der Box, Desktop oben rechts */}
-                {dataAge && (
-                  <>
-                    {/* Desktop: oben rechts */}
-                    <div className="hidden sm:block absolute top-3 right-3">
-                      <div
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full border ${dataAge.color} bg-white/70 shadow-sm text-xs font-medium`}
-                        style={{
-                          borderWidth: 1,
-                          minHeight: 28,
-                          lineHeight: 1.2,
-                          backdropFilter: 'blur(2px)',
-                        }}
-                      >
-                        <Clock className={`h-3 w-3 ${dataAge.color}`} />
-                        <span className={dataAge.color}>
-                          Stand: {dataAge.timeStr} ({dataAge.text})
-                        </span>
+        {/* Wrapper div to prevent layout collapse during animation */}
+        <div className="min-h-[200px] relative">
+          <AnimatePresence mode="wait" custom={direction} initial={false}>
+            <motion.div
+              key={date}
+              custom={direction}
+              variants={variants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: 0.25 }}
+              className="w-full"
+            >
+              <div className="space-y-6">
+                {/* Strecken-Info Header */}
+                <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg relative">
+                  {/* Datenstand-Anzeige: Mobile oben in der Box, Desktop oben rechts */}
+                  {dataAge && (
+                    <>
+                      {/* Desktop: oben rechts */}
+                      <div className="hidden sm:block absolute top-3 right-3">
+                        <div
+                          className={`flex items-center gap-1 px-2 py-0.5 rounded-full border ${dataAge.color} bg-white/70 shadow-sm text-xs font-medium`}
+                          style={{
+                            borderWidth: 1,
+                            minHeight: 28,
+                            lineHeight: 1.2,
+                            backdropFilter: 'blur(2px)',
+                          }}
+                        >
+                          <Clock className={`h-3 w-3 ${dataAge.color}`} />
+                          <span className={dataAge.color}>
+                            Stand: {dataAge.timeStr} ({dataAge.text})
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                    {/* Mobile: oben in der Box, über den Stationsnamen */}
-                    <div className="block sm:hidden mb-2">
-                      <div
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${dataAge.color} bg-white/70 shadow-sm text-xs font-medium max-w-full whitespace-nowrap`}
-                        style={{
-                          borderWidth: 1,
-                          minHeight: 28,
-                          lineHeight: 1.2,
-                          backdropFilter: 'blur(2px)',
-                        }}
-                      >
-                        <Clock className={`h-3 w-3 ${dataAge.color}`} />
-                        <span className={dataAge.color}>
-                          Stand: {dataAge.timeStr} ({dataAge.text})
-                        </span>
+                      {/* Mobile: oben in der Box, über den Stationsnamen */}
+                      <div className="block sm:hidden mb-2">
+                        <div
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${dataAge.color} bg-white/70 shadow-sm text-xs font-medium max-w-full whitespace-nowrap`}
+                          style={{
+                            borderWidth: 1,
+                            minHeight: 28,
+                            lineHeight: 1.2,
+                            backdropFilter: 'blur(2px)',
+                          }}
+                        >
+                          <Clock className={`h-3 w-3 ${dataAge.color}`} />
+                          <span className={dataAge.color}>
+                            Stand: {dataAge.timeStr} ({dataAge.text})
+                          </span>
+                        </div>
                       </div>
+                    </>
+                  )}
+                  <div className="flex items-center gap-2 text-blue-700 text-lg font-semibold mb-3">
+                    <MapPin className="h-5 w-5" />
+                    <span>{startStation?.name}</span>
+                    <ArrowRight className="h-5 w-5 text-gray-400" />
+                    <span>{zielStation?.name}</span>
+                  </div>
+                  {/* Gruppe 1: Reisende & Ticket */}
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-700">
+                    <div className="flex items-center gap-1">
+                      <User className="w-4 h-4" />
+                      {getAlterLabel(searchParams.alter)}
                     </div>
-                  </>
+                    <div className="flex items-center gap-1">
+                      <Train className="w-4 h-4" />
+                      {searchParams.klasse === "KLASSE_1" ? "1. Klasse" : "2. Klasse"}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Percent className="w-4 h-4" />
+                      {searchParams.ermaessigungArt === "KEINE_ERMAESSIGUNG"
+                        ? "Keine Ermäßigung"
+                        : `${searchParams.ermaessigungArt === "BAHNCARD25" ? "BahnCard 25" : searchParams.ermaessigungArt === "BAHNCARD50" ? "BahnCard 50" : searchParams.ermaessigungArt}, ${searchParams.ermaessigungKlasse === "KLASSE_1" ? "1. Kl." : "2. Kl."}`}
+                    </div>
+                  </div>
+                  {/* Gruppe 2: Reiseoptionen */}
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-700 mt-2 pt-2 border-t border-blue-100">
+                    {searchParams.abfahrtAb && (
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-4 h-4" />
+                        Abfahrt ab: {searchParams.abfahrtAb} Uhr
+                      </div>
+                    )}
+                    {searchParams.ankunftBis && (
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-4 h-4" />
+                        Ankunft bis: {searchParams.ankunftBis} Uhr
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1">
+                      <Shuffle className="w-4 h-4" />
+                      max. Umstiege: {searchParams.maximaleUmstiege || "Unbegrenzt"}
+                    </div>
+                    {searchParams.umstiegszeit && searchParams.umstiegszeit !== "normal" && (
+                      <div className="flex items-center gap-1">
+                        <Timer className="w-4 h-4" />
+                        min. Umstiegszeit: {searchParams.umstiegszeit} min
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Preishistorie für den Tag */}
+                {data.priceHistory && data.priceHistory.length > 1 && (
+                  <PriceHistoryChart history={data.priceHistory} title="Preisentwicklung für diesen Tag" />
                 )}
-                <div className="flex items-center gap-2 text-blue-700 text-lg font-semibold mb-3">
-                  <MapPin className="h-5 w-5" />
-                  <span>{startStation?.name}</span>
-                  <ArrowRight className="h-5 w-5 text-gray-400" />
-                  <span>{zielStation?.name}</span>
-                </div>
-                {/* Gruppe 1: Reisende & Ticket */}
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-700">
-                  <div className="flex items-center gap-1">
-                    <User className="w-4 h-4" />
-                    {getAlterLabel(searchParams.alter)}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Train className="w-4 h-4" />
-                    {searchParams.klasse === "KLASSE_1" ? "1. Klasse" : "2. Klasse"}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Percent className="w-4 h-4" />
-                    {searchParams.ermaessigungArt === "KEINE_ERMAESSIGUNG"
-                      ? "Keine Ermäßigung"
-                      : `${searchParams.ermaessigungArt === "BAHNCARD25" ? "BahnCard 25" : searchParams.ermaessigungArt === "BAHNCARD50" ? "BahnCard 50" : searchParams.ermaessigungArt}, ${searchParams.ermaessigungKlasse === "KLASSE_1" ? "1. Kl." : "2. Kl."}`}
-                  </div>
-                </div>
-                {/* Gruppe 2: Reiseoptionen */}
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-700 mt-2 pt-2 border-t border-blue-100">
-                  {searchParams.abfahrtAb && (
+
+                {/* Top-Optionen: Bestpreis vs. KI-Empfehlung */}
+                <RecommendationCards
+                  data={data}
+                  intervals={intervals}
+                  recommendation={recommendation}
+                  recommendedTrip={recommendedTrip}
+                  startStation={startStation}
+                  zielStation={zielStation}
+                  searchParams={searchParams}
+                  calculateDuration={calculateDuration}
+                  createBookingLink={createBookingLink}
+                />
+
+                {/* Kompakte Preisstatistik über der Tabelle */}
+                {hasMultipleIntervals && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded px-3 py-2 mb-2 text-xs flex flex-wrap gap-4 justify-center">
                     <div className="flex items-center gap-1">
-                      <Clock className="w-4 h-4" />
-                      Abfahrt ab: {searchParams.abfahrtAb} Uhr
+                      <span className="text-gray-600">Günstigste:</span>
+                      <span className="font-bold text-green-600">{Math.min(...intervals.map((i: any) => i.preis))}€</span>
                     </div>
-                  )}
-                  {searchParams.ankunftBis && (
                     <div className="flex items-center gap-1">
-                      <Clock className="w-4 h-4" />
-                      Ankunft bis: {searchParams.ankunftBis} Uhr
+                      <span className="text-gray-600">Durchschnitt:</span>
+                      <span className="font-bold text-blue-600">{Math.round(intervals.reduce((sum: number, i: any) => sum + i.preis, 0) / intervals.length)}€</span>
                     </div>
-                  )}
-                  <div className="flex items-center gap-1">
-                    <Shuffle className="w-4 h-4" />
-                    max. Umstiege: {searchParams.maximaleUmstiege || "Unbegrenzt"}
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-600">Teuerste:</span>
+                      <span className="font-bold text-red-600">{Math.max(...intervals.map((i: any) => i.preis))}€</span>
+                    </div>
                   </div>
-                  {searchParams.umstiegszeit && searchParams.umstiegszeit !== "normal" && (
-                    <div className="flex items-center gap-1">
-                      <Timer className="w-4 h-4" />
-                      min. Umstiegszeit: {searchParams.umstiegszeit} min
-                    </div>
-                  )}
-                </div>
+                )}
+
+                {/* All Available Connections */}
+                <ConnectionsTable
+                  intervals={intervals}
+                  displayedIntervals={displayedIntervalsWithRecommendation}
+                  hasMultipleIntervals={hasMultipleIntervals}
+                  minDuration={minDuration}
+                  data={data}
+                  recommendedTrip={recommendedTrip}
+                  startStation={startStation}
+                  zielStation={zielStation}
+                  searchParams={searchParams}
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  handleSort={handleSort}
+                  getIntervalPriceColor={getIntervalPriceColor}
+                  calculateDuration={calculateDuration}
+                  getDurationMinutes={getDurationMinutes}
+                  recommendation={recommendation}
+                  createBookingLink={createBookingLink}
+                  showOnlyCheapest={showOnlyCheapest}
+                  setShowOnlyCheapest={setShowOnlyCheapest}
+                  showAllJourneyDetails={showAllJourneyDetails}
+                  setShowAllJourneyDetails={setShowAllJourneyDetails}
+                />
               </div>
-
-              {/* Preishistorie für den Tag */}
-              {data.priceHistory && data.priceHistory.length > 1 && (
-                <PriceHistoryChart history={data.priceHistory} title="Preisentwicklung für diesen Tag" />
-              )}
-
-              {/* Top-Optionen: Bestpreis vs. KI-Empfehlung */}
-              <RecommendationCards
-                data={data}
-                intervals={intervals}
-                recommendation={recommendation}
-                recommendedTrip={recommendedTrip}
-                startStation={startStation}
-                zielStation={zielStation}
-                searchParams={searchParams}
-                calculateDuration={calculateDuration}
-                createBookingLink={createBookingLink}
-              />
-
-              {/* Kompakte Preisstatistik über der Tabelle */}
-              {hasMultipleIntervals && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded px-3 py-2 mb-2 text-xs flex flex-wrap gap-4 justify-center">
-                  <div className="flex items-center gap-1">
-                    <span className="text-gray-600">Günstigste:</span>
-                    <span className="font-bold text-green-600">{Math.min(...intervals.map((i: any) => i.preis))}€</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-gray-600">Durchschnitt:</span>
-                    <span className="font-bold text-blue-600">{Math.round(intervals.reduce((sum: number, i: any) => sum + i.preis, 0) / intervals.length)}€</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-gray-600">Teuerste:</span>
-                    <span className="font-bold text-red-600">{Math.max(...intervals.map((i: any) => i.preis))}€</span>
-                  </div>
-                </div>
-              )}
-
-              {/* All Available Connections */}
-              <ConnectionsTable
-                intervals={intervals}
-                displayedIntervals={displayedIntervalsWithRecommendation}
-                hasMultipleIntervals={hasMultipleIntervals}
-                minDuration={minDuration}
-                data={data}
-                recommendedTrip={recommendedTrip}
-                startStation={startStation}
-                zielStation={zielStation}
-                searchParams={searchParams}
-                sortKey={sortKey}
-                sortDir={sortDir}
-                handleSort={handleSort}
-                getIntervalPriceColor={getIntervalPriceColor}
-                calculateDuration={calculateDuration}
-                getDurationMinutes={getDurationMinutes}
-                recommendation={recommendation}
-                createBookingLink={createBookingLink}
-                showOnlyCheapest={showOnlyCheapest}
-                setShowOnlyCheapest={setShowOnlyCheapest}
-                showAllJourneyDetails={showAllJourneyDetails}
-                setShowAllJourneyDetails={setShowAllJourneyDetails}
-              />
-            </div>
-          </motion.div>
-        </AnimatePresence>
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </DialogContent>
     </Dialog>
   )
