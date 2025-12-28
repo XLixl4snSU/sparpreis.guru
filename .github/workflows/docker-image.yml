@@ -79,7 +79,7 @@ jobs:
         with:
           images: |
             butti/sparpreis-guru
-            ghcr.io/${{ github.repository_owner }}/sparpreis-guru
+            ghcr.io/${{ github.repository_owner.toLowerCase() }}/sparpreis-guru
           flavor: |
             latest=true
           tags: |
@@ -162,6 +162,6 @@ jobs:
           platforms: linux/amd64
           tags: |
             butti/sparpreis-guru:dev
-            ghcr.io/${{ github.repository_owner }}/sparpreis-guru:dev
+            ghcr.io/${{ github.repository_owner.toLowerCase() }}/sparpreis-guru:dev
           cache-from: type=gha
           cache-to: type=gha,mode=max
