@@ -36,6 +36,7 @@ interface PriceData {
   info: string
   abfahrtsZeitpunkt: string
   ankunftsZeitpunkt: string
+  recordedAt?: number
   priceHistory?: PriceHistoryEntry[]
   allIntervals?: Array<{
     preis: number
@@ -283,7 +284,7 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
                         [data.date]: data.result,
                         _meta: data.meta || prev._meta
                       }))
-                      // Client-seitig als abgeschlossen markieren, wenn letzter Tag eingetroffen ist
+                      // Client-seitig als abgeschlossen markieren, wenn letzter Tag eingetroffenen ist
                       processedDaysRef.current.add(data.date)
                       if (expectedDays && processedDaysRef.current.size >= expectedDays) {
                         setIsStreaming(false)

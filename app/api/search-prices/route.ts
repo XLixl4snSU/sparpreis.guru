@@ -23,6 +23,7 @@ interface TrainResult {
   info: string
   abfahrtsZeitpunkt: string
   ankunftsZeitpunkt: string
+  recordedAt?: number
   priceHistory?: PriceHistoryEntry[]
   allIntervals?: Array<{
     preis: number
@@ -318,6 +319,16 @@ export async function POST(request: NextRequest) {
               ankunftBis,
               umstiegszeit,
             })
+
+            // Füge recordedAt hinzu (mit Cast, da getBestPrice-Typ es nicht kennt)
+            if (dayResponse.result && dayResponse.recordedAt) {
+              for (const dateKey of Object.keys(dayResponse.result)) {
+                const priceData = (dayResponse.result as any)[dateKey]
+                if (priceData) {
+                  (priceData as any).recordedAt = dayResponse.recordedAt
+                }
+              }
+            }
 
             // Prüfe Session-Abbruch NACH dem Request aber VOR der Verarbeitung
             if (globalRateLimiter.isSessionCancelledSync(sessionId)) {

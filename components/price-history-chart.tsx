@@ -47,11 +47,8 @@ export function PriceHistoryChart({ history, title }: PriceHistoryChartProps) {
 
   const data = history.map(entry => {
     const entryDate = new Date(entry.recorded_at)
-    // Wenn mehrere Einträge pro Tag: zeige auch Uhrzeit
-    const label = hasMultipleEntriesPerDay
-      ? entryDate.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-      : entryDate.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
-    
+    // Immer Uhrzeit anzeigen, nicht nur bei mehreren Werten
+    const label = entryDate.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     return {
       date: label,
       preis: entry.preis,

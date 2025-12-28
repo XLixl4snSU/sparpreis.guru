@@ -110,7 +110,7 @@ interface TrainResults {
 }
 
 // Main API call function for best price search
-export async function getBestPrice(config: any): Promise<{ result: TrainResults | null; wasApiCall: boolean }> {
+export async function getBestPrice(config: any): Promise<{ result: TrainResults | null; wasApiCall: boolean; recordedAt: number }> {
   const dateObj = config.anfrageDatum as Date
   const sessionId = config.sessionId // Session ID von der Hauptanfrage
   // Format date like the working curl: "2025-07-26T08:00:00"
@@ -227,7 +227,8 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
       if (umstiegsFilteredIntervals.length === 0) {
         return {
           result: { [tag]: { preis: 0, info: "Keine Verbindungen im gewählten Zeitraum/mit gewählten Umstiegs-Optionen!", abfahrtsZeitpunkt: "", ankunftsZeitpunkt: "", allIntervals: [] } },
-          wasApiCall: false
+          wasApiCall: false,
+          recordedAt: cachedResult.recordedAt ?? Date.now()
         }
       }
       
@@ -271,7 +272,7 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
           priceHistory: dayPriceHistory
         }
       }
-      return { result: filteredResult, wasApiCall: false }
+      return { result: filteredResult, wasApiCall: false, recordedAt: cachedResult.recordedAt ?? Date.now() }
     }
     // Fallback für alte Cache-Einträge ohne allIntervals
     if (cachedData) {
@@ -314,7 +315,7 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
             }))
           : [],
       }
-      return { result: { [tag]: normalizedCachedData }, wasApiCall: false }
+      return { result: { [tag]: normalizedCachedData }, wasApiCall: false, recordedAt: cachedResult.recordedAt ?? Date.now() }
     }
   }
 
@@ -416,10 +417,10 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
       if (status === 429) {
         console.log(`ℹ️ HTTP 429 sentinel for ${tag} (will be retried by rate limiter)`) 
         const result = { [tag]: { preis: 0, info: 'Rate limited, retrying', abfahrtsZeitpunkt: '', ankunftsZeitpunkt: '' } }
-        return { result, wasApiCall: true }
+        return { result, wasApiCall: true, recordedAt: Date.now() }
       }
       const result = { [tag]: { preis: 0, info: `API Error: HTTP ${status}: ${errText}`, abfahrtsZeitpunkt: '', ankunftsZeitpunkt: '' } }
-      return { result, wasApiCall: true }
+      return { result, wasApiCall: true, recordedAt: Date.now() }
     }
 
     // Check if response contains error message
@@ -437,7 +438,7 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
         schnelleVerbindungen: Boolean(config.schnelleVerbindungen === true || config.schnelleVerbindungen === "true"),
         umstiegszeit: (config.umstiegszeit && config.umstiegszeit !== "normal" && config.umstiegszeit !== "undefined") ? config.umstiegszeit : undefined,
       })
-      return { result, wasApiCall: true }
+      return { result, wasApiCall: true, recordedAt: Date.now() }
     }
 
     let data
@@ -453,7 +454,7 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
           ankunftsZeitpunkt: "",
         },
       }
-      return { result: errorResult, wasApiCall: true }
+      return { result: errorResult, wasApiCall: true, recordedAt: Date.now() }
     }
 
     if (!data || !data.intervalle) {
@@ -470,7 +471,7 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
         schnelleVerbindungen: Boolean(config.schnelleVerbindungen === true || config.schnelleVerbindungen === "true"),
         umstiegszeit: (config.umstiegszeit && config.umstiegszeit !== "normal" && config.umstiegszeit !== "undefined") ? config.umstiegszeit : undefined,
       })
-      return { result, wasApiCall: true }
+      return { result, wasApiCall: true, recordedAt: Date.now() }
     }
 
     console.log(`Found ${data.intervalle.length} intervals`)
@@ -607,7 +608,7 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
           priceHistory: emptyDayHistory
         } 
       }
-      return { result, wasApiCall: true }
+      return { result, wasApiCall: true, recordedAt: Date.now() }
     }
 
     // Lade Preishistorie für diesen Tag - NUR für die gefilterten Verbindungen
@@ -654,7 +655,7 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
       },
     }
 
-    return { result, wasApiCall: true }
+    return { result, wasApiCall: true, recordedAt: Date.now() }
     } catch (error) {
       // Spezielle Behandlung für cancelled sessions
       if (error instanceof Error && error.message.includes('was cancelled')) {
@@ -667,7 +668,7 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
             ankunftsZeitpunkt: "",
           },
         }
-        return { result, wasApiCall: true }
+        return { result, wasApiCall: true, recordedAt: Date.now() }
       }
       // 429 nur informativ loggen, nicht als Fehler
       if (error instanceof Error && (error.message.includes('429') || error.message.includes('Too Many Requests'))) {
@@ -683,6 +684,6 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
           ankunftsZeitpunkt: "",
         },
       }
-      return { result, wasApiCall: true }
+      return { result, wasApiCall: true, recordedAt: Date.now() }
     }
 }
