@@ -1,5 +1,14 @@
 import { globalRateLimiter } from './rate-limiter'
-import { generateCacheKey, getCachedResult, setCachedResult, getCachedStation, setCachedStation } from './cache'
+import {
+  generateCacheKey,
+  getCachedResult,
+  setCachedResult,
+  getCachedStation,
+  setCachedStation,
+  getDayPriceHistory,
+  getConnectionPriceHistory,
+  type PriceHistoryEntry
+} from './cache'
 import { metricsCollector } from '@/app/api/metrics/collector'
 import { formatDateKey } from './utils';
 
@@ -84,6 +93,7 @@ interface IntervalDetails {
   info: string
   umstiegsAnzahl: number
   isCheapestPerInterval?: boolean
+  priceHistory?: PriceHistoryEntry[] // Neu: Preishistorie für diese Verbindung
 }
 
 interface TrainResult {
@@ -92,6 +102,7 @@ interface TrainResult {
   abfahrtsZeitpunkt: string
   ankunftsZeitpunkt: string
   allIntervals?: IntervalDetails[]
+  priceHistory?: PriceHistoryEntry[] // Neu: Preishistorie für diesen Tag (günstigster Preis pro Abfragezeitpunkt)
 }
 
 interface TrainResults {
@@ -99,7 +110,7 @@ interface TrainResults {
 }
 
 // Main API call function for best price search
-export async function getBestPrice(config: any): Promise<{ result: TrainResults | null; wasApiCall: boolean }> {
+export async function getBestPrice(config: any): Promise<{ result: TrainResults | null; wasApiCall: boolean; recordedAt: number }> {
   const dateObj = config.anfrageDatum as Date
   const sessionId = config.sessionId // Session ID von der Hauptanfrage
   // Format date like the working curl: "2025-07-26T08:00:00"
@@ -117,42 +128,82 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
     ermaessigungKlasse: config.ermaessigungKlasse || "KLASSENLOS",
     klasse: config.klasse,
     schnelleVerbindungen: Boolean(config.schnelleVerbindungen === true || config.schnelleVerbindungen === "true"),
-    nurDeutschlandTicketVerbindungen: Boolean(config.nurDeutschlandTicketVerbindungen === true || config.nurDeutschlandTicketVerbindungen === "true"),
-    // abfahrtAb und ankunftBis NICHT im Cache-Key!
     umstiegszeit: (config.umstiegszeit && config.umstiegszeit !== "normal" && config.umstiegszeit !== "undefined") ? config.umstiegszeit : undefined,
   })
 
   // Prüfe Cache
   const cachedResult = getCachedResult(cacheKey)
-  if (cachedResult) {
+  if (cachedResult.data && !cachedResult.needsRefresh) {
     console.log(`📦 Cache HIT for ${tag}`)
     metricsCollector.recordCacheHit('connection')
     
-    const cachedData = cachedResult[tag]
+    const cachedData = cachedResult.data[tag]
     if (cachedData && cachedData.allIntervals) {
-      // Zeitfilterung auf gecachte Daten anwenden
+      // Zeitfilterung auf gecachte Daten anwenden - KORRIGIERT mit Datum-Check!
       const filteredIntervals = cachedData.allIntervals.filter((interval: any) => {
         if (!config.abfahrtAb && !config.ankunftBis) return true
         
-        const ersteAbfahrt = interval.abfahrtsZeitpunkt
-        const letzteAnkunft = interval.ankunftsZeitpunkt
+        const depDate = new Date(interval.abfahrtsZeitpunkt)
+        const arrDate = new Date(interval.ankunftsZeitpunkt)
+        const depMinutes = depDate.getHours() * 60 + depDate.getMinutes()
+        const arrMinutes = arrDate.getHours() * 60 + arrDate.getMinutes()
         
-        let abfahrtOk = true
-        let ankunftOk = true
-        
-        if (config.abfahrtAb) {
-          const abfahrtTime = new Date(`1970-01-01T${ersteAbfahrt.split('T')[1]}`)
-          const filterTime = new Date(`1970-01-01T${config.abfahrtAb}:00`)
-          abfahrtOk = abfahrtTime >= filterTime
+        // Parse Filterzeiten
+        const abfahrtAbMinutes = config.abfahrtAb ? (() => { const [h, m] = config.abfahrtAb.split(":").map(Number); return h * 60 + (m || 0) })() : null
+        const ankunftBisMinutes = config.ankunftBis ? (() => { const [h, m] = config.ankunftBis.split(":").map(Number); return h * 60 + (m || 0) })() : null
+
+        // Helper: Check if dates are same day
+        const isSameDay = (date1: Date, date2: Date) => (
+          date1.getFullYear() === date2.getFullYear() &&
+          date1.getMonth() === date2.getMonth() &&
+          date1.getDate() === date2.getDate()
+        )
+
+        // Helper: Check if arrival is next day
+        const isNextDay = (depDate: Date, arrDate: Date) => {
+          const nextDay = new Date(depDate)
+          nextDay.setDate(depDate.getDate() + 1)
+          return isSameDay(arrDate, nextDay)
+        }
+
+        // Beide Filter gesetzt
+        if (abfahrtAbMinutes !== null && ankunftBisMinutes !== null) {
+          if (abfahrtAbMinutes < ankunftBisMinutes) {
+            // Zeitfenster innerhalb eines Tages (z.B. 05:00–20:00 Uhr): Nur Tagesverbindungen
+            return isSameDay(depDate, arrDate) && 
+                   depMinutes >= abfahrtAbMinutes && 
+                   arrMinutes <= ankunftBisMinutes
+          } else {
+            // Zeitfenster über Mitternacht (z.B. 22–06 Uhr): Nachtverbindungen erlauben
+            if (isSameDay(depDate, arrDate)) {
+              // Abfahrt und Ankunft am selben Tag
+              return depMinutes >= abfahrtAbMinutes
+            } else if (isNextDay(depDate, arrDate)) {
+              // Ankunft am Folgetag
+              return depMinutes >= abfahrtAbMinutes && arrMinutes <= ankunftBisMinutes
+            }
+            return false
+          }
         }
         
-        if (config.ankunftBis) {
-          const ankunftTime = new Date(`1970-01-01T${letzteAnkunft.split('T')[1]}`)
-          const filterTime = new Date(`1970-01-01T${config.ankunftBis}:00`)
-          ankunftOk = ankunftTime <= filterTime
+        // Nur abfahrtAb gesetzt
+        if (abfahrtAbMinutes !== null) {
+          return depMinutes >= abfahrtAbMinutes
         }
         
-        return abfahrtOk && ankunftOk
+        // Nur ankunftBis gesetzt
+        if (ankunftBisMinutes !== null) {
+          if (isSameDay(depDate, arrDate)) {
+            return arrMinutes <= ankunftBisMinutes
+          } else if (isNextDay(depDate, arrDate)) {
+            // Nachtverbindungen: nur wenn Abfahrt nach Ankunftszeit liegt
+            return arrMinutes <= ankunftBisMinutes && depMinutes > arrMinutes
+          }
+          return false
+        }
+        
+        // Kein Filter: alles erlauben
+        return true
       })
       
       // Umstiegs-Filterung auf gecachte Daten anwenden
@@ -176,7 +227,8 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
       if (umstiegsFilteredIntervals.length === 0) {
         return {
           result: { [tag]: { preis: 0, info: "Keine Verbindungen im gewählten Zeitraum/mit gewählten Umstiegs-Optionen!", abfahrtsZeitpunkt: "", ankunftsZeitpunkt: "", allIntervals: [] } },
-          wasApiCall: false
+          wasApiCall: false,
+          recordedAt: cachedResult.recordedAt ?? Date.now()
         }
       }
       
@@ -184,27 +236,74 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
       const minPreis = Math.min(...umstiegsFilteredIntervals.map((iv: any) => iv.preis))
       const bestInterval = umstiegsFilteredIntervals.find((interval: any) => interval.preis === minPreis)
       
+      // Erstelle Connection-IDs für gefilterte Verbindungen
+      const filteredConnectionIds = umstiegsFilteredIntervals.map((interval: any) => 
+        `${config.startStationNormalizedId}-${config.zielStationNormalizedId}-${interval.abfahrtsZeitpunkt}-${interval.ankunftsZeitpunkt}-${interval.umstiegsAnzahl}`
+      )
+      
+      // Lade Preishistorie nur für die gefilterten Connection-IDs
+      const dayPriceHistory = getDayPriceHistory({
+        startStationId: config.startStationNormalizedId,
+        zielStationId: config.zielStationNormalizedId,
+        date: tag,
+        alter: config.alter,
+        ermaessigungArt: config.ermaessigungArt || "KEINE_ERMAESSIGUNG",
+        ermaessigungKlasse: config.ermaessigungKlasse || "KLASSENLOS",
+        klasse: config.klasse
+      }, filteredConnectionIds)
+      
+      const intervalsWithHistory = umstiegsFilteredIntervals.map((interval: any) => ({
+        ...interval,
+        priceHistory: getConnectionPriceHistory({
+          connectionId: `${config.startStationNormalizedId}-${config.zielStationNormalizedId}-${interval.abfahrtsZeitpunkt}-${interval.ankunftsZeitpunkt}-${interval.umstiegsAnzahl}`,
+          alter: config.alter,
+          ermaessigungArt: config.ermaessigungArt || "KEINE_ERMAESSIGUNG",
+          ermaessigungKlasse: config.ermaessigungKlasse || "KLASSENLOS",
+          klasse: config.klasse
+        })
+      }))
       const filteredResult = {
         [tag]: {
           preis: minPreis,
           info: bestInterval?.info || "",
           abfahrtsZeitpunkt: bestInterval?.abfahrtsZeitpunkt || "",
           ankunftsZeitpunkt: bestInterval?.ankunftsZeitpunkt || "",
-          allIntervals: umstiegsFilteredIntervals.sort((a: any, b: any) => a.preis - b.preis) as IntervalDetails[]
+          allIntervals: intervalsWithHistory.sort((a: any, b: any) => a.preis - b.preis) as IntervalDetails[],
+          priceHistory: dayPriceHistory
         }
       }
-      
-      return { result: filteredResult, wasApiCall: false }
+      return { result: filteredResult, wasApiCall: false, recordedAt: cachedResult.recordedAt ?? Date.now() }
     }
-    
     // Fallback für alte Cache-Einträge ohne allIntervals
     if (cachedData) {
-      // Normalize cachedData to match TrainResult type
+      // Für alte Cache-Einträge ohne Filter-Info
+      const allConnectionIds = Array.isArray(cachedData.allIntervals)
+        ? cachedData.allIntervals.map((iv: any) => 
+            `${config.startStationNormalizedId}-${config.zielStationNormalizedId}-${iv.abfahrtsZeitpunkt}-${iv.ankunftsZeitpunkt}-${iv.umstiegsAnzahl ?? 0}`
+          )
+        : []
+      
       const normalizedCachedData: TrainResult = {
         ...cachedData,
+        priceHistory: getDayPriceHistory({
+          startStationId: config.startStationNormalizedId,
+          zielStationId: config.zielStationNormalizedId,
+          date: tag,
+          alter: config.alter,
+          ermaessigungArt: config.ermaessigungArt || "KEINE_ERMAESSIGUNG",
+          ermaessigungKlasse: config.ermaessigungKlasse || "KLASSENLOS",
+          klasse: config.klasse
+        }, allConnectionIds), // KEINE timeFilters
         allIntervals: Array.isArray(cachedData.allIntervals)
           ? cachedData.allIntervals.map((iv: any) => ({
               ...iv,
+              priceHistory: getConnectionPriceHistory({
+                connectionId: `${config.startStationNormalizedId}-${config.zielStationNormalizedId}-${iv.abfahrtsZeitpunkt}-${iv.ankunftsZeitpunkt}-${iv.umstiegsAnzahl ?? 0}`,
+                alter: config.alter,
+                ermaessigungArt: config.ermaessigungArt || "KEINE_ERMAESSIGUNG",
+                ermaessigungKlasse: config.ermaessigungKlasse || "KLASSENLOS",
+                klasse: config.klasse
+              }),
               abschnitte: Array.isArray(iv.abschnitte)
                 ? iv.abschnitte.map((a: any) => ({
                     abfahrtsZeitpunkt: a.abfahrtsZeitpunkt,
@@ -216,12 +315,17 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
             }))
           : [],
       }
-      return { result: { [tag]: normalizedCachedData }, wasApiCall: false }
+      return { result: { [tag]: normalizedCachedData }, wasApiCall: false, recordedAt: cachedResult.recordedAt ?? Date.now() }
     }
   }
 
-  console.log(`❌ Cache MISS for ${tag}`)
-  metricsCollector.recordCacheMiss('connection')
+  // Wenn Cache veraltet oder nicht vorhanden, fahre mit API-Call fort
+  if (cachedResult.needsRefresh) {
+    console.log(`🔄 Cache HIT but stale for ${tag}, refreshing`)
+  } else {
+    console.log(`❌ Cache MISS for ${tag}`)
+    metricsCollector.recordCacheMiss('connection')
+  }
 
   // Match the EXACT working curl request structure
   const requestBody: any = {
@@ -313,18 +417,28 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
       if (status === 429) {
         console.log(`ℹ️ HTTP 429 sentinel for ${tag} (will be retried by rate limiter)`) 
         const result = { [tag]: { preis: 0, info: 'Rate limited, retrying', abfahrtsZeitpunkt: '', ankunftsZeitpunkt: '' } }
-        return { result, wasApiCall: true }
+        return { result, wasApiCall: true, recordedAt: Date.now() }
       }
       const result = { [tag]: { preis: 0, info: `API Error: HTTP ${status}: ${errText}`, abfahrtsZeitpunkt: '', ankunftsZeitpunkt: '' } }
-      return { result, wasApiCall: true }
+      return { result, wasApiCall: true, recordedAt: Date.now() }
     }
 
     // Check if response contains error message
     if (responseText.includes("Preisauskunft nicht möglich")) {
       console.log("Price info not available for this date")
       const result = { [tag]: { preis: 0, info: "Kein Bestpreis verfügbar!", abfahrtsZeitpunkt: "", ankunftsZeitpunkt: "" } }
-      setCachedResult(cacheKey, result)
-      return { result, wasApiCall: true }
+      setCachedResult(cacheKey, result, {
+        startStationId: config.startStationNormalizedId,
+        zielStationId: config.zielStationNormalizedId,
+        date: tag,
+        alter: config.alter,
+        ermaessigungArt: config.ermaessigungArt || "KEINE_ERMAESSIGUNG",
+        ermaessigungKlasse: config.ermaessigungKlasse || "KLASSENLOS",
+        klasse: config.klasse,
+        schnelleVerbindungen: Boolean(config.schnelleVerbindungen === true || config.schnelleVerbindungen === "true"),
+        umstiegszeit: (config.umstiegszeit && config.umstiegszeit !== "normal" && config.umstiegszeit !== "undefined") ? config.umstiegszeit : undefined,
+      })
+      return { result, wasApiCall: true, recordedAt: Date.now() }
     }
 
     let data
@@ -340,14 +454,24 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
           ankunftsZeitpunkt: "",
         },
       }
-      return { result: errorResult, wasApiCall: true }
+      return { result: errorResult, wasApiCall: true, recordedAt: Date.now() }
     }
 
     if (!data || !data.intervalle) {
       console.log("No intervals found in response")
       const result = { [tag]: { preis: 0, info: "Keine Intervalle gefunden!", abfahrtsZeitpunkt: "", ankunftsZeitpunkt: "" } }
-      setCachedResult(cacheKey, result)
-      return { result, wasApiCall: true }
+      setCachedResult(cacheKey, result, {
+        startStationId: config.startStationNormalizedId,
+        zielStationId: config.zielStationNormalizedId,
+        date: tag,
+        alter: config.alter,
+        ermaessigungArt: config.ermaessigungArt || "KEINE_ERMAESSIGUNG",
+        ermaessigungKlasse: config.ermaessigungKlasse || "KLASSENLOS",
+        klasse: config.klasse,
+        schnelleVerbindungen: Boolean(config.schnelleVerbindungen === true || config.schnelleVerbindungen === "true"),
+        umstiegszeit: (config.umstiegszeit && config.umstiegszeit !== "normal" && config.umstiegszeit !== "undefined") ? config.umstiegszeit : undefined,
+      })
+      return { result, wasApiCall: true, recordedAt: Date.now() }
     }
 
     console.log(`Found ${data.intervalle.length} intervals`)
@@ -408,7 +532,17 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
     }
 
     // Cache ALLE Daten (ohne Zeitfilter)
-    setCachedResult(cacheKey, fullResult)
+    setCachedResult(cacheKey, fullResult, {
+      startStationId: config.startStationNormalizedId,
+      zielStationId: config.zielStationNormalizedId,
+      date: tag,
+      alter: config.alter,
+      ermaessigungArt: config.ermaessigungArt || "KEINE_ERMAESSIGUNG",
+      ermaessigungKlasse: config.ermaessigungKlasse || "KLASSENLOS",
+      klasse: config.klasse,
+      schnelleVerbindungen: Boolean(config.schnelleVerbindungen === true || config.schnelleVerbindungen === "true"),
+      umstiegszeit: (config.umstiegszeit && config.umstiegszeit !== "normal" && config.umstiegszeit !== "undefined") ? config.umstiegszeit : undefined,
+    })
 
     // Jetzt Zeitfilter für aktuelle Anfrage anwenden
     const timeFilteredIntervals = finalAllIntervals.filter(interval => {
@@ -437,18 +571,15 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
 
     // Umstiegs-Filterung anwenden
     const umstiegsFilteredIntervals = timeFilteredIntervals.filter(interval => {
-      // Wenn kein Filter gesetzt ist (undefined, null, "alle"), alle Verbindungen erlauben
       if (config.maximaleUmstiege === undefined || 
           config.maximaleUmstiege === null || 
           config.maximaleUmstiege === "alle" || 
           config.maximaleUmstiege === "") {
-        return true // Alle Verbindungen
+        return true
       }
-      // Nur Direktverbindungen
       if (config.maximaleUmstiege === 0 || config.maximaleUmstiege === "0") {
         return interval.umstiegsAnzahl === 0
       }
-      // Maximal X Umstiege
       return interval.umstiegsAnzahl <= Number(config.maximaleUmstiege)
     })
 
@@ -456,14 +587,62 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
 
     if (umstiegsFilteredIntervals.length === 0) {
       console.log("No intervals remaining after transfer filtering")
-      const result = { [tag]: { preis: 0, info: "Keine Verbindungen mit den gewählten Umstiegs-Optionen!", abfahrtsZeitpunkt: "", ankunftsZeitpunkt: "", allIntervals: [] } }
-      return { result, wasApiCall: true }
+      // Auch für leere Ergebnisse die Historie mit Zeitfiltern
+      const emptyDayHistory = getDayPriceHistory({
+        startStationId: config.startStationNormalizedId,
+        zielStationId: config.zielStationNormalizedId,
+        date: tag,
+        alter: config.alter,
+        ermaessigungArt: config.ermaessigungArt || "KEINE_ERMAESSIGUNG",
+        ermaessigungKlasse: config.ermaessigungKlasse || "KLASSENLOS",
+        klasse: config.klasse
+      }, []) // Leere Liste
+      
+      const result = { 
+        [tag]: { 
+          preis: 0, 
+          info: "Keine Verbindungen mit den gewählten Umstiegs-Optionen!", 
+          abfahrtsZeitpunkt: "", 
+          ankunftsZeitpunkt: "", 
+          allIntervals: [],
+          priceHistory: emptyDayHistory
+        } 
+      }
+      return { result, wasApiCall: true, recordedAt: Date.now() }
     }
 
-    // Finde günstigste Verbindung für Bestpreis-Anzeige (aber ohne isCheapestPerInterval-Markierung)
+    // Lade Preishistorie für diesen Tag - NUR für die gefilterten Verbindungen
+    const filteredConnectionIds = umstiegsFilteredIntervals.map(interval => 
+      `${config.startStationNormalizedId}-${config.zielStationNormalizedId}-${interval.abfahrtsZeitpunkt}-${interval.ankunftsZeitpunkt}-${interval.umstiegsAnzahl}`
+    )
+    
+    const dayPriceHistory = getDayPriceHistory({
+      startStationId: config.startStationNormalizedId,
+      zielStationId: config.zielStationNormalizedId,
+      date: tag,
+      alter: config.alter,
+      ermaessigungArt: config.ermaessigungArt || "KEINE_ERMAESSIGUNG",
+      ermaessigungKlasse: config.ermaessigungKlasse || "KLASSENLOS",
+      klasse: config.klasse
+    }, filteredConnectionIds) // KEINE timeFilters mehr - IDs sind bereits gefiltert
+
+    // Finde günstigste Verbindung für Bestpreis-Anzeige
     const bestPrice = Math.min(...umstiegsFilteredIntervals.map(iv => iv.preis))
     const bestInterval = umstiegsFilteredIntervals.find(interval => interval.preis === bestPrice)
-    const sortedFilteredIntervals = umstiegsFilteredIntervals.sort((a, b) => a.preis - b.preis)
+
+    // Lade Preishistorie für jede Verbindung
+    const sortedFilteredIntervalsWithHistory = umstiegsFilteredIntervals
+      .map(interval => ({
+        ...interval,
+        priceHistory: getConnectionPriceHistory({
+          connectionId: `${config.startStationNormalizedId}-${config.zielStationNormalizedId}-${interval.abfahrtsZeitpunkt}-${interval.ankunftsZeitpunkt}-${interval.umstiegsAnzahl}`,
+          alter: config.alter,
+          ermaessigungArt: config.ermaessigungArt || "KEINE_ERMAESSIGUNG",
+          ermaessigungKlasse: config.ermaessigungKlasse || "KLASSENLOS",
+          klasse: config.klasse
+        })
+      }))
+      .sort((a, b) => a.preis - b.preis)
 
     const result = {
       [tag]: {
@@ -471,11 +650,12 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
         info: bestInterval?.info || "",
         abfahrtsZeitpunkt: bestInterval?.abfahrtsZeitpunkt || "",
         ankunftsZeitpunkt: bestInterval?.ankunftsZeitpunkt || "",
-        allIntervals: sortedFilteredIntervals,
+        allIntervals: sortedFilteredIntervalsWithHistory,
+        priceHistory: dayPriceHistory
       },
     }
 
-    return { result, wasApiCall: true }
+    return { result, wasApiCall: true, recordedAt: Date.now() }
     } catch (error) {
       // Spezielle Behandlung für cancelled sessions
       if (error instanceof Error && error.message.includes('was cancelled')) {
@@ -488,7 +668,7 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
             ankunftsZeitpunkt: "",
           },
         }
-        return { result, wasApiCall: true }
+        return { result, wasApiCall: true, recordedAt: Date.now() }
       }
       // 429 nur informativ loggen, nicht als Fehler
       if (error instanceof Error && (error.message.includes('429') || error.message.includes('Too Many Requests'))) {
@@ -504,6 +684,6 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
           ankunftsZeitpunkt: "",
         },
       }
-      return { result, wasApiCall: true }
+      return { result, wasApiCall: true, recordedAt: Date.now() }
     }
 }

@@ -1,118 +1,87 @@
-# 🚂 sparpreis.guru
+# sparpreis.guru
 
-Finde die günstigsten Sparpreis-Bahntickets über einen längeren Zeitraum bei der Deutschen Bahn.
+Such dir die billigsten Bahntickets über einen gewissen Zeitraum. Wenn du zeitlich flexibel bist, kannst du mit dieser App den günstigsten Preis für deine Fahrt über mehrere Tage oder sogar Wochen hinweg finden.
 
-## Was kann die App?
+**Features:**
 
-- Smarte Suche
-  - Reisezeitraum und einzelne Wochentage (Mo–So) frei wählbar
-  - Abfahrts- und Ankunftszeit, inkl. Nachtzug-Handling
-  - Filter: Klasse (1./2.), BahnCard 25/50, schnelle Verbindungen, Direktverbindungen, max. Umstiege, Deutschland-Ticket
-- Buchung & Darstellung
-  - Direkter DB-Buchungslink mit allen Parametern
-  - Interaktiver Monatskalender mit Min/Max/Ø-Preisen
-  - Tagesdetails mit allen Verbindungen
-- Performance & Robustheit
-  - Caching und Rate Limiting um die API der Bahn zu schonen und Limits bereits vorher einzuhalten
-  - Multi-Session-fähig
+- Zeitraum wählen (z.B. nächste 4 Wochen) + bestimmte Wochentage filtern
+- Abfahrts-/Ankunftszeiten eingrenzen
+- BahnCard 25/50, Klasse, Max. Umstiege, Direktverbindungen
+- Kalenderansicht mit günstigsten Tagen auf einen Blick
+- Klick auf Tag → alle Verbindungen des Tages
+- Streaming-Suche mit Echtzeit-Updates
+- Anzeige der Preis-Historie, sofern für eine Verbindung bereits Preisdaten vorhanden sind
 
-## Schnellstart
+## Installation
 
-### Lokal (Node.js)
+**Mit Node.js:**
 
-Voraussetzungen: Node.js 18+, pnpm (oder yarn)
+```bash
+git clone https://github.com/XLixl4snSU/sparpreis.guru.git
+cd sparpreis.guru
+pnpm install
+pnpm dev
+```
 
-1. Repository klonen
-   git clone https://github.com/XLixl4snSU/sparpreis.guru.git
-   cd sparpreis.guru
+Dann auf http://localhost:3000
 
-2. Abhängigkeiten installieren
-   pnpm install
+**Mit Docker:**
 
-3. Dev-Server starten
-   pnpm run dev
+```bash
+docker run -p 3000:3000 \
+  -e NEXT_PUBLIC_BASE_URL="http://localhost:3000" \
+  -v path/to/local/data:/app/data \
+  ghcr.io/xlixl4snsu/sparpreis-guru:latest
+```
 
-4. Browser öffnen
-   http://localhost:3000
-
-Hinweis: Für lokale Nutzung sind i. d. R. keine ENV-Variablen nötig.
-
-### Docker (ohne pnpm)
-
-Ohne lokale Node/pnpm-Installation starten:
-
-- Neuester Build:
-  docker run --rm -p 3000:3000 \
-    -e NEXT_PUBLIC_BASE_URL="http://localhost:3000" \
-    ghcr.io/xlixl4snsu/sparpreis-guru:latest
-
-Öffne danach http://localhost:3000.
-
-Tipps:
-- NEXT_PUBLIC_BASE_URL in Produktion auf deine Domain setzen
-- Hinter einem Reverse Proxy ggf. Header/Forwarding korrekt konfigurieren
-
-## Konfiguration (ENV)
-
-Minimal:
-- NEXT_PUBLIC_BASE_URL: Öffentliche Basis-URL der App (in Produktion empfohlen)
-
-### Monitoring (Prometheus/Grafana)
-
-Die App stellt ein Prometheus-kompatibles Endpoint bereit (Standard: /api/metrics). Für Betrieb mit Prometheus/Grafana können optionale ENV-Variablen gesetzt werden:
-
-- METRICS_API_KEY=dein_geheimer_key
-  (API-Key für Zugriff auf /api/metrics)
-- ALLOWED_METRICS_IPS=127.0.0.1,192.168.0.0/16
-  (Optional: Kommagetrennte Liste erlaubter IPs/CIDRs für /api/metrics)
-
-Hinweis: Siehe app/api/metrics/* in diesem Repo für Details zu unterstützten Variablen und Zugriffsschutz.
-
-Beispiel Prometheus-Scrape-Config:
-- job_name: "sparpreis-guru"
-  scrape_interval: 15s
-  metrics_path: /api/metrics
-  static_configs:
-    - targets: ["app:3000"]
-  authorization:
-    credentials: <METRICS_API_KEY>
-
-Grafana: Prometheus als Datenquelle hinzufügen und Dashboards mit passendem Präfix erstellen.
-
-## Projektstruktur (Kurzüberblick)
-
-- app/
-  - api/search-prices/*: Preis-Suche (Streaming, Caching, Rate Limiting, Abbruch)
-  - api/search-progress: Fortschritt der laufenden Suche
-  - api/metrics: Prometheus-Metriken
-  - page.tsx: Startseite
-- components/
-  - train-search-form.tsx, train-results.tsx, price-calendar.tsx, day-details-modal.tsx
-  - ui/*: shadcn/ui Komponenten
-
-## Technik
-
-- Next.js App Router, TypeScript, Tailwind CSS + shadcn/ui
-- Streaming-APIs, intelligentes Caching, globales Rate Limiting
+> **Hinweis:**  
+> Für einen konsistenten Cache und damit die Preis-Historie und Suchergebnisse erhalten bleiben, sollte das Verzeichnis `/app/data` im Container als Volume gemountet werden. Dort liegt die SQLite-Datenbank.  
+> Ohne Volume ist die Datenbank nach jedem Update oder Neustart des Containers leer.
 
 ## Deployment
 
-- Jede Plattform mit Next.js-Support (bspw. vercel)
-- Setze in Produktion mindestens NEXT_PUBLIC_BASE_URL
+Funktioniert auf Vercel, Railway, oder wo auch immer Next.js läuft.
+
+Einzige Umgebungsvariable die du brauchst:
+
+- `NEXT_PUBLIC_BASE_URL` – Deine Domain (z.B. `https://sparpreis.guru`)
+
+## Monitoring (optional)
+
+Falls du Prometheus/Grafana nutzt, kannst du Metriken unter `/api/metrics` abrufen:
+
+```bash
+# Mit API-Key schützen
+METRICS_API_KEY=geheim123
+
+# Optional: Nur bestimmte IPs erlauben
+ALLOWED_METRICS_IPS=127.0.0.1,10.0.0.0/8
+```
+
+Prometheus Config:
+
+```yaml
+scrape_configs:
+  - job_name: sparpreis
+    metrics_path: /api/metrics
+    static_configs:
+      - targets: ["localhost:3000"]
+    authorization:
+      credentials: geheim123
+```
+
+## Techstack
+
+- Next.js 15 (App Router)
+- TypeScript
+- Tailwind + shadcn/ui
+- Streaming APIs mit Server-Sent Events
+- Rate Limiting & Caching
+
+## Credits
+
+Basiert auf [bahn.vibe](https://github.com/jschae23/bahn.vibe), ursprünglich inspiriert von einer PHP-Version von hackgrid.
 
 ## Lizenz
 
-GPLv3 – siehe LICENSE.
-
-## Hinweis zum Ursprung
-
-Dieses Projekt ist ein Fork von https://github.com/jschae23/bahn.vibe.
-
-## Dank
-
-- Deutsche Bahn (Daten)
-- shadcn/ui
-- Next.js Team
-- Ursprung: auf Basis einer PHP-Version von hackgrid
-
-Vibed with GitHub Copilot.
+GPLv3

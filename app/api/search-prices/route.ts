@@ -2,9 +2,13 @@ import { type NextRequest, NextResponse } from "next/server"
 import { globalRateLimiter } from './rate-limiter'
 import { searchBahnhof, getBestPrice } from './bahn-api'
 import { updateProgress, updateAverageResponseTimes, getAverageResponseTimes } from './utils'
-import { generateCacheKey, getCachedResult, getCacheSize } from './cache'
+import { generateCacheKey, getCachedResult, getCacheSize, type PriceHistoryEntry } from './cache'
 import { recommendBestPrice } from '@/lib/recommendation-engine'
 import { metricsCollector } from '@/app/api/metrics/collector'
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 
 // Hilfsfunktion für lokales Datum im Format YYYY-MM-DD
 function formatDateKey(date: Date) {
@@ -19,6 +23,8 @@ interface TrainResult {
   info: string
   abfahrtsZeitpunkt: string
   ankunftsZeitpunkt: string
+  recordedAt?: number
+  priceHistory?: PriceHistoryEntry[]
   allIntervals?: Array<{
     preis: number
     abfahrtsZeitpunkt: string
@@ -28,6 +34,7 @@ interface TrainResult {
     info: string
     umstiegsAnzahl: number
     isCheapestPerInterval?: boolean
+    priceHistory?: PriceHistoryEntry[]
     abschnitte?: Array<{
       abfahrtsZeitpunkt: string
       ankunftsZeitpunkt: string
@@ -226,16 +233,13 @@ export async function POST(request: NextRequest) {
               ermaessigungKlasse: ermaessigungKlasse || "KLASSENLOS",
               klasse: klasse || "KLASSE_2",
               schnelleVerbindungen: Boolean(schnelleVerbindungen === true || schnelleVerbindungen === "true"),
-              nurDeutschlandTicketVerbindungen: Boolean(
-                nurDeutschlandTicketVerbindungen === true || nurDeutschlandTicketVerbindungen === "true",
-              ),
               umstiegszeit: (umstiegszeit && umstiegszeit !== "normal" && umstiegszeit !== "undefined") ? umstiegszeit : undefined,
             })
             const isCached = !!getCachedResult(cacheKey)
             dayStatusList.push({ date: dateStr, isCached, cacheKey })
           }
 
-          // Gesamtanzahl der gecachten und ungecachten Tage für die gesamte Suche
+          // Gesamtanzahl der gecached und ungecachten Tage für die gesamte Suche
           let totalUncachedDays = dayStatusList.filter((d) => !d.isCached).length
           let totalCachedDays = dayStatusList.filter((d) => d.isCached).length
           const avgTimes = getAverageResponseTimes()
@@ -316,6 +320,16 @@ export async function POST(request: NextRequest) {
               umstiegszeit,
             })
 
+            // Füge recordedAt hinzu (mit Cast, da getBestPrice-Typ es nicht kennt)
+            if (dayResponse.result && dayResponse.recordedAt) {
+              for (const dateKey of Object.keys(dayResponse.result)) {
+                const priceData = (dayResponse.result as any)[dateKey]
+                if (priceData) {
+                  (priceData as any).recordedAt = dayResponse.recordedAt
+                }
+              }
+            }
+
             // Prüfe Session-Abbruch NACH dem Request aber VOR der Verarbeitung
             if (globalRateLimiter.isSessionCancelledSync(sessionId)) {
               // Nur einmal loggen, nicht für jeden Tag
@@ -392,8 +406,10 @@ export async function POST(request: NextRequest) {
                     return true
                   })
 
-                  // Aktualisiere die Intervalle und berechne neuen Bestpreis
+                  // WICHTIG: Aktualisiere allIntervals VOR der Bestpreis-Berechnung
                   priceData.allIntervals = filteredIntervals
+                  
+                  console.log(`🔍 Time filter: ${priceData.allIntervals.length} intervals after time filtering for ${dateKey}`)
                   
                   if (filteredIntervals.length === 0) {
                     priceData.preis = 0
@@ -410,7 +426,6 @@ export async function POST(request: NextRequest) {
                       priceData.ankunftsZeitpunkt = recommendedTrip.ankunftsZeitpunkt
                       priceData.info = recommendedTrip.info
                     } else {
-                      // Fallback zur alten Logik falls Algorithmus nichts findet
                       const minPrice = Math.min(...filteredIntervals.map(i => i.preis))
                       const bestPriceIntervals = filteredIntervals.filter(i => i.preis === minPrice)
                       bestPriceIntervals.sort((a, b) => {
@@ -439,8 +454,8 @@ export async function POST(request: NextRequest) {
               for (const dateKey of Object.keys(dayResponse.result)) {
                 const priceData = dayResponse.result[dateKey]
                 if (priceData && priceData.allIntervals && Array.isArray(priceData.allIntervals)) {
-                  // Falls noch kein spezifischer Bestpreis gesetzt wurde (d.h. keine Zeitfilter), 
-                  // verwende den intelligenten Algorithmus auch hier
+                  
+                  // Falls noch kein spezifischer Bestpreis gesetzt wurde
                   if (!abfahrtAb && !ankunftBis && priceData.allIntervals.length > 1) {
                     const recommendedTrip = recommendBestPrice(priceData.allIntervals)
                     if (recommendedTrip) {
@@ -451,22 +466,22 @@ export async function POST(request: NextRequest) {
                     }
                   }
 
-                  // Definiere die Zeitfenster (wie bei der Bahn)
+                  // Zeitfenster-Definition (immer verwenden, auch mit Zeitfiltern!)
                   const timeSlots = [
-                    { start: 0, end: 7 },    // 0-7 Uhr
-                    { start: 7, end: 10 },   // 7-10 Uhr
-                    { start: 10, end: 13 },  // 10-13 Uhr
-                    { start: 13, end: 16 },  // 13-16 Uhr
-                    { start: 16, end: 19 },  // 16-19 Uhr
-                    { start: 19, end: 24 },  // 19-24 Uhr
+                    { start: 0, end: 7 },
+                    { start: 7, end: 10 },
+                    { start: 10, end: 13 },
+                    { start: 13, end: 16 },
+                    { start: 16, end: 19 },
+                    { start: 19, end: 24 },
                   ]
 
-                  // Setze alle Verbindungen erstmal auf false
+                  // Setze alle auf false
                   for (const interval of priceData.allIntervals) {
                     interval.isCheapestPerInterval = false
                   }
 
-                  // Gruppiere Verbindungen nach Zeitfenstern
+                  // Gruppiere nach Zeitfenstern
                   const slotMap = new Map<number, any[]>()
                   for (const interval of priceData.allIntervals) {
                     const depDate = new Date(interval.abfahrtsZeitpunkt)
@@ -480,38 +495,37 @@ export async function POST(request: NextRequest) {
                     }
                   }
 
-                                    // Markiere günstigste Verbindung pro Zeitfenster
-                  slotMap.forEach((intervals) => {
+                  // Markiere günstigste pro Slot
+                  slotMap.forEach((intervals, slotIndex) => {
                     if (intervals.length > 0) {
-                      // Verwende intelligenten Algorithmus für beste Verbindung pro Slot
                       const bestInSlot = recommendBestPrice(intervals)
                       if (bestInSlot) {
-                        // Finde die entsprechende Verbindung und markiere sie
                         for (const interval of intervals) {
-                          interval.isCheapestPerInterval = (
+                          const isMatch = (
                             interval.abfahrtsZeitpunkt === bestInSlot.abfahrtsZeitpunkt &&
                             interval.ankunftsZeitpunkt === bestInSlot.ankunftsZeitpunkt &&
                             interval.preis === bestInSlot.preis
                           )
+                          if (isMatch) {
+                            interval.isCheapestPerInterval = true
+                          }
                         }
                       } else {
-                        // Fallback: Sortiere nach Preis, dann Reisedauer, dann Abfahrt
                         const sortedIntervals = intervals.slice().sort((a, b) => {
                           if (a.preis !== b.preis) return a.preis - b.preis
-                          // Reisedauer berechnen
                           const aDuration = new Date(a.ankunftsZeitpunkt).getTime() - new Date(a.abfahrtsZeitpunkt).getTime()
                           const bDuration = new Date(b.ankunftsZeitpunkt).getTime() - new Date(b.abfahrtsZeitpunkt).getTime()
                           if (aDuration !== bDuration) return aDuration - bDuration
-                          // Abfahrtszeit
                           return new Date(a.abfahrtsZeitpunkt).getTime() - new Date(b.abfahrtsZeitpunkt).getTime()
                         })
-                        // Nur die erste Verbindung markieren
-                        sortedIntervals.forEach((interval, idx) => {
-                          interval.isCheapestPerInterval = idx === 0
-                        })
+                        sortedIntervals[0].isCheapestPerInterval = true
                       }
                     }
                   })
+                  
+                  // Final count
+                  const markedCount = priceData.allIntervals.filter(i => i.isCheapestPerInterval === true).length
+                  console.log(`🏁 Final result for ${dateKey}: ${markedCount} intervals marked as cheapest out of ${priceData.allIntervals.length} total`)
                 }
               }
             }

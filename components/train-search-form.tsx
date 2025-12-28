@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useCallback, useRef, useEffect } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -73,9 +73,62 @@ interface TrainSearchFormProps {
   searchParams: SearchParams
 }
 
+interface StationSuggestion {
+  extId: string
+  id: string
+  name: string
+}
+
 export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
-  const [start, setStart] = useState(searchParams.start || "")
-  const [ziel, setZiel] = useState(searchParams.ziel || "")
+  // Helper function to check if a string is a station ID (numeric)
+  const isStationId = (value: string): boolean => {
+    return /^\d+$/.test(value)
+  }
+
+  const [start, setStart] = useState(() => {
+    // If the start param is an ID, don't show it, we'll resolve it later
+    if (searchParams.start && isStationId(searchParams.start)) {
+      return ""
+    }
+    return searchParams.start || ""
+  })
+  
+  const [startId, setStartId] = useState(() => {
+    // If the start param looks like an ID, store it as ID
+    return searchParams.start && isStationId(searchParams.start) ? searchParams.start : ""
+  })
+  
+  const [ziel, setZiel] = useState(() => {
+    // If the ziel param is an ID, don't show it, we'll resolve it later
+    if (searchParams.ziel && isStationId(searchParams.ziel)) {
+      return ""
+    }
+    return searchParams.ziel || ""
+  })
+  
+  const [zielId, setZielId] = useState(() => {
+    // If the ziel param looks like an ID, store it as ID
+    return searchParams.ziel && isStationId(searchParams.ziel) ? searchParams.ziel : ""
+  })
+  
+  const [startSuggestions, setStartSuggestions] = useState<StationSuggestion[]>([])
+  const [zielSuggestions, setZielSuggestions] = useState<StationSuggestion[]>([])
+  const [showStartSuggestions, setShowStartSuggestions] = useState(false)
+  const [showZielSuggestions, setShowZielSuggestions] = useState(false)
+  const [loadingStart, setLoadingStart] = useState(false)
+  const [loadingZiel, setLoadingZiel] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
+  const [zielError, setZielError] = useState<string | null>(null)
+  
+  const startInputRef = useRef<HTMLInputElement>(null)
+  const zielInputRef = useRef<HTMLInputElement>(null)
+  const startSuggestionsRef = useRef<HTMLDivElement>(null)
+  const zielSuggestionsRef = useRef<HTMLDivElement>(null)
+  
+  // Debounce timer refs - use undefined as initial value
+  const startDebounceRef = useRef<NodeJS.Timeout | undefined>(undefined)
+  const zielDebounceRef = useRef<NodeJS.Timeout | undefined>(undefined)
+  
   function getTomorrowISO() {
     const tomorrow = new Date()
     tomorrow.setDate(tomorrow.getDate() + 1)
@@ -110,9 +163,12 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
   })
 
   const switchStations = () => {
-    const temp = start
+    const tempName = start
+    const tempId = startId
     setStart(ziel)
-    setZiel(temp)
+    setStartId(zielId)
+    setZiel(tempName)
+    setZielId(tempId)
   }
 
   const weekdayLabels = [
@@ -150,11 +206,209 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
     return dates
   }, [reisezeitraumAb, reisezeitraumBis, selectedWeekdays])
 
+  // Fetch station suggestions with retry logic
+  const fetchStationSuggestions = useCallback(async (query: string, type: 'start' | 'ziel', retryCount = 0) => {
+    const maxRetries = 3
+    
+    if (query.trim().length < 2) {
+      if (type === 'start') {
+        setStartSuggestions([])
+        setShowStartSuggestions(false)
+        setStartError(null)
+      } else {
+        setZielSuggestions([])
+        setShowZielSuggestions(false)
+        setZielError(null)
+      }
+      return
+    }
+    
+    try {
+      if (type === 'start') {
+        setLoadingStart(true)
+        setStartError(null)
+      } else {
+        setLoadingZiel(true)
+        setZielError(null)
+      }
+      
+      const response = await fetch(`/api/station-search?q=${encodeURIComponent(query)}`)
+      
+      // Handle rate limiting
+      if (response.status === 429) {
+        const data = await response.json()
+        const retryAfter = data.retryAfter || 1000
+        
+        if (retryCount < maxRetries) {
+          // Show retry message
+          const errorMsg = `Zu viele Anfragen, versuche erneut in ${Math.ceil(retryAfter / 1000)}s...`
+          if (type === 'start') {
+            setStartError(errorMsg)
+          } else {
+            setZielError(errorMsg)
+          }
+          
+          // Retry after delay
+          await new Promise(resolve => setTimeout(resolve, retryAfter))
+          return fetchStationSuggestions(query, type, retryCount + 1)
+        } else {
+          throw new Error('Rate limit exceeded. Bitte versuche es in einigen Sekunden erneut.')
+        }
+      }
+      
+      if (!response.ok) {
+        throw new Error('Fehler beim Laden der Bahnhöfe')
+      }
+      
+      const data = await response.json()
+      
+      if (data.results) {
+        if (type === 'start') {
+          setStartSuggestions(data.results)
+          setShowStartSuggestions(true)
+        } else {
+          setZielSuggestions(data.results)
+          setShowZielSuggestions(true)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching station suggestions:', error)
+      const errorMsg = error instanceof Error ? error.message : 'Fehler beim Laden der Bahnhöfe'
+      if (type === 'start') {
+        setStartError(errorMsg)
+      } else {
+        setZielError(errorMsg)
+      }
+    } finally {
+      if (type === 'start') {
+        setLoadingStart(false)
+      } else {
+        setLoadingZiel(false)
+      }
+    }
+  }, [])
+  
+  // Handle input changes with debounce
+  const handleStartInput = useCallback((value: string) => {
+    setStart(value)
+    setStartId("") // Clear ID when manually typing
+    
+    if (startDebounceRef.current) {
+      clearTimeout(startDebounceRef.current)
+    }
+    
+    startDebounceRef.current = setTimeout(() => {
+      fetchStationSuggestions(value, 'start')
+    }, 300)
+  }, [fetchStationSuggestions])
+  
+  const handleZielInput = useCallback((value: string) => {
+    setZiel(value)
+    setZielId("") // Clear ID when manually typing
+    
+    if (zielDebounceRef.current) {
+      clearTimeout(zielDebounceRef.current)
+    }
+    
+    zielDebounceRef.current = setTimeout(() => {
+      fetchStationSuggestions(value, 'ziel')
+    }, 300)
+  }, [fetchStationSuggestions])
+  
+  // Handle suggestion selection
+  const selectStartSuggestion = useCallback((suggestion: StationSuggestion) => {
+    setStart(suggestion.name)
+    setStartId(suggestion.extId)
+    setShowStartSuggestions(false)
+  }, [])
+  
+  const selectZielSuggestion = useCallback((suggestion: StationSuggestion) => {
+    setZiel(suggestion.name)
+    setZielId(suggestion.extId)
+    setShowZielSuggestions(false)
+  }, [])
+  
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (startInputRef.current && !startInputRef.current.contains(event.target as Node) &&
+          startSuggestionsRef.current && !startSuggestionsRef.current.contains(event.target as Node)) {
+        setShowStartSuggestions(false)
+      }
+      if (zielInputRef.current && !zielInputRef.current.contains(event.target as Node) &&
+          zielSuggestionsRef.current && !zielSuggestionsRef.current.contains(event.target as Node)) {
+        setShowZielSuggestions(false)
+      }
+    }
+    
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+  
+  // Cleanup debounce timers
+  useEffect(() => {
+    return () => {
+      if (startDebounceRef.current) clearTimeout(startDebounceRef.current)
+      if (zielDebounceRef.current) clearTimeout(zielDebounceRef.current)
+    }
+  }, [])
+
+  // Resolve station IDs to names on mount
+  useEffect(() => {
+    const resolveStationId = async (id: string, type: 'start' | 'ziel') => {
+      try {
+        // Search for the station by ID - the API will return the station details
+        const response = await fetch(`/api/station-search?q=${encodeURIComponent(id)}`)
+        const data = await response.json()
+        
+        if (data.results && data.results.length > 0) {
+          // Find exact match by extId
+          const station = data.results.find((s: StationSuggestion) => s.extId === id) || data.results[0]
+          if (type === 'start') {
+            setStart(station.name)
+          } else {
+            setZiel(station.name)
+          }
+        }
+      } catch (error) {
+        console.error(`Error resolving station ID ${id}:`, error)
+        // Fallback: show the ID if resolution fails
+        if (type === 'start') {
+          setStart(id)
+        } else {
+          setZiel(id)
+        }
+      }
+    }
+    
+    // Resolve start station if it's an ID
+    if (startId) {
+      resolveStationId(startId, 'start')
+    }
+    
+    // Resolve destination station if it's an ID
+    if (zielId) {
+      resolveStationId(zielId, 'ziel')
+    }
+  }, [startId, zielId]) // Run when IDs are available
+  
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const params = new URLSearchParams()
-    if (start) params.set("start", start)
-    if (ziel) params.set("ziel", ziel)
+    
+    // Use station ID if available, otherwise fallback to name
+    if (startId) {
+      params.set("start", startId)
+    } else if (start) {
+      params.set("start", start)
+    }
+    
+    if (zielId) {
+      params.set("ziel", zielId)
+    } else if (ziel) {
+      params.set("ziel", ziel)
+    }
+    
     if (reisezeitraumAb) params.set("reisezeitraumAb", reisezeitraumAb)
     if (reisezeitraumBis) params.set("reisezeitraumBis", reisezeitraumBis)
     if (alter) params.set("alter", alter)
@@ -185,7 +439,9 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
 
   const handleReset = () => {
     setStart("")
+    setStartId("")
     setZiel("")
+    setZielId("")
     setReisezeitraumAb(new Date().toISOString().split("T")[0])
     setAlter("ERWACHSENER")
     setErmaessigungArt("KEINE_ERMAESSIGUNG")
@@ -220,15 +476,13 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
       </h2>
 
       <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-6">
-        {/* Abschnitt 1: Reisedaten */}
         <div className="bg-white p-2 sm:p-4 rounded-lg shadow-sm border border-gray-100">
           <h3 className="text-md font-semibold text-gray-700 mb-2 sm:mb-3 flex items-center gap-2">
             <Map className="w-4 h-4 text-blue-600" />
             Reisedaten
           </h3>
-          {/* Von/Nach als eigene Zeile, immer nebeneinander */}
           <div className="flex flex-row gap-2 items-end flex-nowrap mb-3">
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 relative">
               <Label htmlFor="start" className="text-sm font-medium text-gray-600 mb-2 block">
                 <span className="inline-flex items-center gap-1">
                   <MapPin className="w-4 h-4 text-blue-500" />
@@ -236,14 +490,48 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
                 </span>
               </Label>
               <Input
+                ref={startInputRef}
                 id="start"
                 type="text"
                 placeholder="München"
                 value={start}
-                onChange={(e) => setStart(e.target.value)}
+                onChange={(e) => handleStartInput(e.target.value)}
+                onFocus={() => start.length >= 2 && setShowStartSuggestions(true)}
                 required
                 className={ctrl}
+                autoComplete="off"
               />
+              {startError && (
+                <div className="absolute z-50 w-full mt-1 bg-amber-50 border border-amber-300 rounded-md shadow-sm p-2">
+                  <p className="text-xs text-amber-800 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    {startError}
+                  </p>
+                </div>
+              )}
+              {showStartSuggestions && startSuggestions.length > 0 && (
+                <div 
+                  ref={startSuggestionsRef}
+                  className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto"
+                >
+                  {loadingStart && (
+                    <div className="p-2 text-sm text-gray-500 text-center flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                      Lädt...
+                    </div>
+                  )}
+                  {startSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion.extId}
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm border-b border-gray-100 last:border-b-0"
+                      onClick={() => selectStartSuggestion(suggestion)}
+                    >
+                      <div className="font-medium text-gray-900">{suggestion.name}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex items-end flex-shrink-0" style={{height: '44px'}}>
               <Button
@@ -254,12 +542,12 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
                 className="bg-white hover:bg-gray-50 border-gray-300 h-11 w-11 flex items-center justify-center p-0"
                 tabIndex={-1}
                 aria-label="Bahnhöfe tauschen"
-                style={{height: '44px', width: '44px'}} // fallback for h-11
+                style={{height: '44px', width: '44px'}}
               >
                 <ArrowLeftRight className="h-5 w-5" />
               </Button>
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 relative">
               <Label htmlFor="ziel" className="text-sm font-medium text-gray-600 mb-2 block">
                 <span className="inline-flex items-center gap-1">
                   <MapPin className="w-4 h-4 text-blue-500" />
@@ -267,17 +555,50 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
                 </span>
               </Label>
               <Input
+                ref={zielInputRef}
                 id="ziel"
                 type="text"
                 placeholder="Berlin"
                 value={ziel}
-                onChange={(e) => setZiel(e.target.value)}
+                onChange={(e) => handleZielInput(e.target.value)}
+                onFocus={() => ziel.length >= 2 && setShowZielSuggestions(true)}
                 required
                 className={ctrl}
+                autoComplete="off"
               />
+              {zielError && (
+                <div className="absolute z-50 w-full mt-1 bg-amber-50 border border-amber-300 rounded-md shadow-sm p-2">
+                  <p className="text-xs text-amber-800 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    {zielError}
+                  </p>
+                </div>
+              )}
+              {showZielSuggestions && zielSuggestions.length > 0 && (
+                <div 
+                  ref={zielSuggestionsRef}
+                  className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto"
+                >
+                  {loadingZiel && (
+                    <div className="p-2 text-sm text-gray-500 text-center flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                      Lädt...
+                    </div>
+                  )}
+                  {zielSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion.extId}
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm border-b border-gray-100 last:border-b-0"
+                      onClick={() => selectZielSuggestion(suggestion)}
+                    >
+                      <div className="font-medium text-gray-900">{suggestion.name}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
-
           {/* Restliche Felder im grid */}
           <div className="flex flex-col gap-3">
             <div>

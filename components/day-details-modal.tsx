@@ -16,6 +16,7 @@ import {
 } from "@/lib/day-details-utils"
 import { RecommendationCards } from "@/components/day-recommendation-cards"
 import { ConnectionsTable } from "@/components/day-connections-table"
+import { PriceHistoryChart, type PriceHistoryEntry } from "@/components/price-history-chart"
 
 interface Interval {
   preis: number
@@ -25,6 +26,7 @@ interface Interval {
   ankunftsOrt: string
   info: string
   umstiegsAnzahl?: number
+  priceHistory?: PriceHistoryEntry[]
 }
 
 interface IntervalData {
@@ -36,6 +38,7 @@ interface IntervalData {
   info: string
   umstiegsAnzahl?: number
   isCheapestPerInterval?: boolean
+  priceHistory?: PriceHistoryEntry[]
 }
 
 interface PriceData {
@@ -43,6 +46,8 @@ interface PriceData {
   info: string
   abfahrtsZeitpunkt: string
   ankunftsZeitpunkt: string
+  recordedAt?: number
+  priceHistory?: PriceHistoryEntry[]
   allIntervals?: IntervalData[]
 }
 
@@ -243,6 +248,29 @@ export function DayDetailsModal({
     }
   }
 
+  // Formatiere Zeitstempel für Anzeige
+  const getDataAgeInfo = () => {
+    if (!data?.recordedAt) return null
+    
+    const now = Date.now()
+    const age = now - data.recordedAt
+    const ageMinutes = Math.floor(age / 60000)
+    const ageHours = Math.floor(ageMinutes / 60)
+    
+    const recordedDate = new Date(data.recordedAt)
+    const timeStr = recordedDate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+    
+    if (ageMinutes < 1) {
+      return { text: 'gerade eben aktualisiert', color: 'text-green-600', timeStr }
+    } else if (ageMinutes < 60) {
+      return { text: `vor ${ageMinutes} Min. aktualisiert`, color: 'text-green-600', timeStr }
+    } else {
+      return { text: `vor ${ageHours}h ${ageMinutes % 60}min aktualisiert`, color: 'text-orange-600', timeStr }
+    }
+  }
+
+  const dataAge = getDataAgeInfo()
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent 
@@ -257,6 +285,7 @@ export function DayDetailsModal({
             <span className="sm:hidden">{shortDate}</span>
             {isWeekend && <Badge variant="secondary">Wochenende</Badge>}
           </DialogTitle>
+          {/* Datenstand-Anzeige entfernt, wird unten in die blaue Box verschoben */}
         </DialogHeader>
         {/* Desktop: Tag-Navigation Pfeile unterhalb des Headers */}
         {onNavigateDay && dayKeys.length > 1 && (
@@ -348,13 +377,32 @@ export function DayDetailsModal({
           >
             <div className="space-y-6">
               {/* Strecken-Info Header */}
-              <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+              <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg relative">
                 <div className="flex items-center gap-2 text-blue-700 text-lg font-semibold mb-3">
                   <MapPin className="h-5 w-5" />
                   <span>{startStation?.name}</span>
                   <ArrowRight className="h-5 w-5 text-gray-400" />
                   <span>{zielStation?.name}</span>
                 </div>
+                {/* Datenstand-Anzeige oben rechts in einer dezenten, kleinen Box */}
+                {dataAge && (
+                  <div className="absolute top-3 right-3">
+                    <div
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded-full border ${dataAge.color} bg-white/70 shadow-sm text-xs font-medium`}
+                      style={{
+                        borderWidth: 1,
+                        minHeight: 28,
+                        lineHeight: 1.2,
+                        backdropFilter: 'blur(2px)',
+                      }}
+                    >
+                      <Clock className={`h-3 w-3 ${dataAge.color}`} />
+                      <span className={dataAge.color}>
+                        Stand: {dataAge.timeStr} ({dataAge.text})
+                      </span>
+                    </div>
+                  </div>
+                )}
                 {/* Gruppe 1: Reisende & Ticket */}
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-700">
                   <div className="flex items-center gap-1">
@@ -398,6 +446,11 @@ export function DayDetailsModal({
                   )}
                 </div>
               </div>
+
+              {/* Preishistorie für den Tag */}
+              {data.priceHistory && data.priceHistory.length > 1 && (
+                <PriceHistoryChart history={data.priceHistory} title="Preisentwicklung für diesen Tag" />
+              )}
 
               {/* Top-Optionen: Bestpreis vs. KI-Empfehlung */}
               <RecommendationCards

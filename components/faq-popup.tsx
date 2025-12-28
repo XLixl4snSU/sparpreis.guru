@@ -23,6 +23,10 @@ export function FAQPopup() {
       answer: "Die Preise werden in Regel in Echtzeit von der Deutschen Bahn abgerufen. Ergebnisse werden allerdings für 60 Minuten zwischengespeichert, um unnötige Mehrfachanfragen zu vermeiden."
     },
     {
+      question: "Wie funktioniert die Preishistorie?",
+      answer: "Die Preishistorie zeigt an, wie sich die Preise für eine bestimmte Verbindung im Laufe der Zeit verändert haben – sofern für diese Verbindung bereits frühere Preisdaten vorliegen. Sie wird nur angezeigt, wenn die gleiche Suche schon einmal zu einem früheren Zeitpunkt durchgeführt wurde. Ist das nicht der Fall, gibt es keine Preishistorie für diese Verbindung."
+    },
+    {
       question: "Was passiert mit meinen Daten?",
       answer: "Es werden keine personenbezogene Daten gespeichert. Ausschließlich die Suchparameter werden gespeichert und verarbeitet."
     }
