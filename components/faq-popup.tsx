@@ -1,4 +1,3 @@
-// filepath: c:\Users\dudoo\Downloads\bahn vibe\bahn.vibe\components\faq-popup.tsx
 "use client"
 
 import React, { useState } from 'react'
