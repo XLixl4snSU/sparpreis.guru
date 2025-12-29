@@ -2,7 +2,7 @@ import React, { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Train, Shuffle, TrendingUp, ArrowRight, Euro, Info, Star, Clock, Minus, TrendingDown } from "lucide-react"
+import { Train, Shuffle, TrendingUp, ArrowRight, Euro, Info, Star, Clock, Minus, TrendingDown, ChevronDown, ChevronUp } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { VehicleTypesSummary } from "@/components/vehicle-types-summary"
 import { PriceHistoryChart } from "@/components/price-history-chart"
@@ -244,16 +244,16 @@ export function ConnectionsTable({
   showAllJourneyDetails,
   setShowAllJourneyDetails,
 }: any) {
-  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set())
+  const [expandedItems, setExpandedItems] = useState<Set<number|string>>(new Set())
   const [showAllJourneyDetailsLocal, setShowAllJourneyDetailsLocal] = useState<boolean>(false)
 
-  const toggleExpanded = (index: number) => {
+  const toggleExpanded = (key: number|string) => {
     setExpandedItems(prev => {
       const newSet = new Set(prev)
-      if (newSet.has(index)) {
-        newSet.delete(index)
+      if (newSet.has(key)) {
+        newSet.delete(key)
       } else {
-        newSet.add(index)
+        newSet.add(key)
       }
       return newSet
     })
@@ -369,6 +369,13 @@ export function ConnectionsTable({
       </div>
     )
   }
+  // Set showOnlyCheapest default to false if undefined
+  React.useEffect(() => {
+    if (typeof showOnlyCheapest === "undefined") {
+      setShowOnlyCheapest(false)
+    }
+  }, [showOnlyCheapest, setShowOnlyCheapest])
+
   return (
     <div className="bg-blue-50 p-4 rounded-lg">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 gap-2 md:gap-0">
@@ -410,40 +417,35 @@ export function ConnectionsTable({
         </div>
       </div>
       <div className="space-y-3">
-        {/* Sortierbare Tabellen-Header */}
+        {/* Sortierbare Tabellen-Header - Desktop Only */}
         {hasMultipleIntervals && (
-          <div className="mb-2">
-            <div className="flex flex-wrap md:grid md:grid-cols-6 gap-2 md:gap-3 text-xs font-semibold select-none sticky top-0 bg-blue-50 z-10 border-b border-blue-200 w-full">
-              {[
-                { key: 'abfahrt', label: 'Abfahrt' },
-                { key: 'ankunft', label: 'Ankunft' },
-                { key: 'umstiege', label: 'Umstiege' },
-                { key: 'dauer', label: 'Reisedauer' },
-                { key: 'preis', label: 'Preis' },
-              ].map(col => (
-                <button
-                  key={col.key}
-                  className={`flex-1 min-w-[90px] text-left flex items-center gap-1 px-2 py-1 rounded transition-colors whitespace-nowrap ${sortKey === col.key ? 'bg-blue-100 text-blue-900' : 'hover:bg-blue-100 text-blue-700'}`}
-                  onClick={() => handleSort(col.key)}
-                  title="Sortieren"
-                  type="button"
-                >
-                  {col.label}
-                  {sortKey === col.key && (
-                    <span className="inline-block">
-                      {sortDir === 'asc' ? (
-                        <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" className="chevron-up"><path fillRule="evenodd" d="M10 6a1 1 0 01.7.3l4 4a1 1 0 01-1.4 1.4L10 8.42l-3.3 3.3a1 1 0 01-1.4-1.42l4-4A1 1 0 0110 6z" clipRule="evenodd" /></svg>
-                      ) : (
-                        <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" className="chevron-down"><path fillRule="evenodd" d="M10 14a1 1 0 01-.7-.3l-4-4a1 1 0 011.4-1.4L10 11.58l3.3-3.3a1 1 0 111.4 1.42l-4 4A1 1 0 0110 14z" clipRule="evenodd" /></svg>
-                      )}
-                    </span>
-                  )}
-                </button>
-              ))}
-              <div className="hidden md:block" />
+          <div className="mb-2 hidden md:block">
+            <div className="grid grid-cols-[1.5fr_1.5fr_3fr_2fr_2fr_2fr] gap-6 text-xs font-semibold select-none sticky top-0 bg-blue-50 z-10 border-b border-blue-200 pb-2 px-5 text-gray-600">
+              <div className="cursor-pointer hover:text-blue-700 flex items-center gap-1" onClick={() => handleSort('abfahrt')}>
+                Abfahrt
+                {sortKey === 'abfahrt' && (sortDir === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+              </div>
+              <div className="cursor-pointer hover:text-blue-700 flex items-center gap-1" onClick={() => handleSort('ankunft')}>
+                Ankunft
+                {sortKey === 'ankunft' && (sortDir === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+              </div>
+              <div className="cursor-pointer hover:text-blue-700 flex items-center gap-1" onClick={() => handleSort('dauer')}>
+                Dauer
+                {sortKey === 'dauer' && (sortDir === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+              </div>
+              <div className="cursor-pointer hover:text-blue-700 flex items-center gap-1" onClick={() => handleSort('umstiege')}>
+                Umstiege
+                {sortKey === 'umstiege' && (sortDir === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+              </div>
+              <div className="cursor-pointer hover:text-blue-700 flex items-center gap-1" onClick={() => handleSort('preis')}>
+                Preis
+                {sortKey === 'preis' && (sortDir === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+              </div>
+              <div className="text-right">Buchung</div>
             </div>
           </div>
         )}
+
         {/* Verbindungen */}
         <div className="space-y-3">
           {displayedIntervals.map((interval: any, index: number) => {
@@ -478,151 +480,7 @@ export function ConnectionsTable({
             return (
               <React.Fragment key={index}>
                 {/* Mobile */}
-                <div className={`md:hidden rounded-lg shadow-sm p-2 mb-2 relative ${cardBg} ${leftBorder}`}
-                  style={isRecommended || isBestPrice ? { paddingTop: 32 } : {}}>
-                  {(isRecommended || isBestPrice) && (
-                    <div className="absolute top-2 left-2 z-10 flex gap-2">
-                      {isRecommended && (
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Badge className="bg-amber-100 text-amber-800 border border-amber-400 rounded-full cursor-help flex items-center gap-1 px-2 py-1 font-semibold shadow-sm">
-                              <Star className="h-3 w-3" />
-                              Empfohlen
-                            </Badge>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-64 text-sm">
-                            <div className="font-semibold mb-2 text-amber-800">🧠 Intelligente Empfehlung</div>
-                            <div className="space-y-2">
-                              <div className="text-xs">Basiert auf einer gewichteten Bewertung von:</div>
-                              <ul className="list-disc list-inside space-y-1 text-xs text-gray-600">
-                                <li><strong>45%</strong> Preis</li>
-                                <li><strong>30%</strong> Reisezeit</li>
-                                <li><strong>25%</strong> Anzahl Umstiege (Komfort)</li>
-                                <li><strong>Direktverbindung</strong> wird bis zu 40% Aufpreis bevorzugt</li>
-                              </ul>
-                              <div className="text-xs mt-2 p-2 bg-amber-100 rounded font-medium">
-                                {recommendation?.explanation.reason}
-                              </div>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-                      )}
-                      {isBestPrice && (
-                        <Badge className="bg-green-100 text-green-800 border border-green-400 rounded-full flex items-center gap-1 px-2 py-1 font-semibold shadow-sm">
-                          <Euro className="h-3 w-3" />
-                          Bestpreis
-                        </Badge>
-                      )}
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    {/* Hauptzeile mit Zeit/Preis/Buchen */}
-                    <div className="flex flex-row items-stretch justify-between gap-2">
-                      {/* Links: Abfahrt/Ankunft */}
-                      <div className="flex flex-col justify-center min-w-[70px] flex-1">
-                        <div>
-                          <span className="text-xs text-gray-500 font-semibold">Abfahrt</span><br />
-                          <span className="font-medium text-sm">{new Date(interval.abfahrtsZeitpunkt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}</span>
-                        </div>
-                        <div className="mt-1">
-                          <span className="text-xs text-gray-500 font-semibold">Ankunft</span><br />
-                          <span className="font-medium text-sm">{new Date(interval.ankunftsZeitpunkt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}</span>
-                        </div>
-                      </div>
-                      
-                      {/* Mitte: Umstiege/Dauer */}
-                      <div className="flex flex-col justify-center min-w-[70px] flex-1">
-                        <div>
-                          <span className="text-xs text-gray-500 font-semibold">Umstiege</span><br />
-                          <div className="flex items-center gap-1">
-                            <span className="font-medium text-sm">{interval.umstiegsAnzahl || 0}</span>
-                            {(interval.umstiegsAnzahl || 0) === 0 && (
-                              <span className="text-xs text-green-600">(Direkt)</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="mt-1">
-                          <span className="text-xs text-gray-500 font-semibold">Reisedauer</span><br />
-                          <span className="font-medium text-sm">{calculateDuration(interval.abfahrtsZeitpunkt, interval.ankunftsZeitpunkt)}</span>
-                          {isFastest && (
-                            <div className="mt-0.5">
-                              <span title="Schnellste Verbindung" className="inline-flex items-center px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[10px] font-semibold">
-                                <TrendingUp className="h-3 w-3 mr-0.5" />
-                                Schnellste
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {/* Rechts: Preis/Buchen */}
-                      <div className="flex flex-col items-end min-w-[90px] flex-shrink-0 justify-center ml-2">
-                        <div>
-                          <span className="text-xs text-gray-500 font-semibold">Preis</span><br />
-                          <span className={`font-bold text-base px-2 py-1 rounded ${getIntervalPriceColor(interval.preis)}`}>{interval.preis}€</span>
-                          {/* Historie-Button für einzelne Verbindung */}
-                          {interval.priceHistory && interval.priceHistory.length > 1 && (
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <Button variant="ghost" size="icon" className="ml-1 h-6 w-6">
-                                  {getTrendIcon(interval.priceHistory)}
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-[520px]">
-                                <PriceHistoryChart history={interval.priceHistory} title="Preisentwicklung dieser Verbindung" />
-                              </PopoverContent>
-                            </Popover>
-                          )}
-                        </div>
-                        <div className="mt-2">
-                          {bookingLink && (
-                            <Button
-                              size="sm"
-                              variant="default"
-                              className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 whitespace-nowrap"
-                             
-                              onClick={() => window.open(bookingLink, "_blank")}
-                            >
-                              <Train className="h-4 w-4" />
-                              Buchen
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Separate row for vehicle types - compact, no border, wenig Abstand */}
-                    <div className="flex justify-left mt-1 mb-1">
-                      <VehicleTypesSummary interval={interval} />
-                    </div>
-                    
-                    {/* Expand button for journey details */}
-                    <div className="pt-2 border-t border-gray-100">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => toggleExpanded(index)}
-                        className="w-full flex items-center gap-2 text-xs text-gray-600 hover:text-gray-800"
-                      >
-                        <Train className="h-3 w-3" />
-                        {expandedItems.has(index) ? 'Fahrtverlauf ausblenden' : 'Fahrtverlauf anzeigen'}
-                        <ArrowRight className={`h-3 w-3 transition-transform ${expandedItems.has(index) ? 'rotate-90' : ''}`} />
-                      </Button>
-                      
-                      {/* Expandable journey timeline */}
-                      {expandedItems.has(index) && (
-                        <div className="mt-2 pt-2">
-                          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                            <MobileJourneyTimeline interval={interval} />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                {/* Desktop-Grid */}
-                <div
-                  className={`hidden md:block p-3 rounded relative text-sm ${leftBorder} ${cardBg}`}
+                <div className={`md:hidden rounded-lg shadow-md p-4 mb-3 relative ${cardBg} ${leftBorder}`}
                   style={isRecommended || isBestPrice ? { paddingTop: 40 } : {}}>
                   {(isRecommended || isBestPrice) && (
                     <div className="absolute top-2 left-2 z-10 flex gap-2">
@@ -660,109 +518,298 @@ export function ConnectionsTable({
                     </div>
                   )}
                   
-                  {/* Top row with main info */}
-                  <div className="grid grid-cols-6 gap-3 items-center mb-3">
-                    <div>
-                      <div className="text-gray-600 mb-1">Abfahrt</div>
-                      <div className="font-medium">
-                        {new Date(interval.abfahrtsZeitpunkt).toLocaleTimeString("de-DE", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                  {/* Hauptzeile: Zeit und Preis */}
+                  <div className="flex items-center justify-between mb-3">
+                    {/* Abfahrt - Pfeil - Ankunft */}
+                    <div className="flex items-center gap-2">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-gray-900">
+                          {new Date(interval.abfahrtsZeitpunkt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">Abfahrt</div>
                       </div>
-                      <div className="text-xs text-gray-500">{interval.abfahrtsOrt}</div>
+                      
+                      <ArrowRight className="h-5 w-5 text-gray-400 flex-shrink-0" />
+                      
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-gray-900">
+                          {new Date(interval.ankunftsZeitpunkt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">Ankunft</div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="text-gray-600 mb-1">Ankunft</div>
-                      <div className="font-medium">
-                        {new Date(interval.ankunftsZeitpunkt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
+                    
+                    {/* Preis */}
+                    <div className="text-right">
+                      <div className={`text-2xl font-bold px-3 py-2 rounded-lg ${getIntervalPriceColor(interval.preis)}`}>
+                        {interval.preis}€
                       </div>
-                      <div className="text-xs text-gray-500">{interval.ankunftsOrt}</div>
                     </div>
-                    <div>
-                      <div className="text-gray-600 mb-1">Umstiege</div>
-                      <div className="font-medium flex items-center gap-1">
-                        <Shuffle className="h-4 w-4 text-gray-500" />
-                        {interval.umstiegsAnzahl || 0}
-                        {(interval.umstiegsAnzahl || 0) === 0 && (
-                          <span className="text-xs text-green-600 ml-1">(Direkt)</span>
-                        )}
-                        {!showAllJourneyDetails && (interval.abschnitte && interval.abschnitte.length > 0) && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => toggleExpanded(index)}
-                            className="ml-1 h-6 w-6 p-0 flex items-center justify-center text-blue-600 hover:text-blue-800 transition-colors"
-                            title={expandedItems.has(index) ? 'Fahrtverlauf ausblenden' : 'Fahrtverlauf anzeigen'}
-                          >
-                            <Info className="h-4 w-4" />
-                          </Button>
+                  </div>
+
+                  {/* Details Grid */}
+                  <div className="py-3 border-t border-b border-gray-200 space-y-2">
+                    {/* Erste Zeile: Dauer und Umstiege nebeneinander */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Dauer</div>
+                        <div className="font-semibold text-sm text-gray-900">
+                          {calculateDuration(interval.abfahrtsZeitpunkt, interval.ankunftsZeitpunkt)}
+                        </div>
+                        {isFastest && (
+                          <div className="mt-1">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[9px] font-semibold">
+                              <TrendingUp className="h-2.5 w-2.5 mr-0.5" />
+                              Schnellste
+                            </span>
+                          </div>
                         )}
                       </div>
-                      <div className="mt-1 flex flex-wrap gap-1">
+                      
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Umstiege</div>
+                        <div className="font-semibold text-sm text-gray-900">
+                          {interval.umstiegsAnzahl || 0}
+                          {(interval.umstiegsAnzahl || 0) === 0 && (
+                            <span className="text-[10px] text-green-600 font-medium ml-1">(Direkt)</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Zweite Zeile: Fahrzeugtypen über die gesamte Breite */}
+                    <div>
+                      <div className="text-xs text-gray-500 mb-1">Züge</div>
+                      <div className="flex flex-wrap gap-1">
                         <VehicleTypesSummary interval={interval} />
                       </div>
                     </div>
-                    <div>
-                      <div className="text-gray-600 mb-1">Reisedauer</div>
-                      <div className="font-medium">
-                        {calculateDuration(interval.abfahrtsZeitpunkt, interval.ankunftsZeitpunkt)}
-                      </div>
-                      {isFastest && (
-                        <div className="mt-0.5">
-                          <span title="Schnellste Verbindung" className="inline-flex items-center px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[10px] font-semibold">
-                            <TrendingUp className="h-3 w-3 mr-0.5" />
-                            Schnellste
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <div className="text-gray-600 mb-1">Preis</div>
-                      <div className="flex items-center">
-                        <div className={`font-bold text-lg px-2 py-1 rounded ${getIntervalPriceColor(interval.preis)}`}>{interval.preis}€</div>
-                        {/* Historie-Button für einzelne Verbindung */}
-                        {interval.priceHistory && interval.priceHistory.length > 1 && (
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button variant="ghost" size="icon" className="ml-1 h-6 w-6">
-                                {getTrendIcon(interval.priceHistory)}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-[520px]">
-                              <PriceHistoryChart history={interval.priceHistory} title="Preisentwicklung dieser Verbindung" />
-                            </PopoverContent>
-                          </Popover>
-                        )}
-                      </div>
-                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="mt-3 space-y-2">
                     {bookingLink && (
                       <Button
-                        size="sm"
+                        size="lg"
                         variant="default"
-                        className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 whitespace-nowrap"
-                        title="Buchen"
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold h-11"
                         onClick={() => window.open(bookingLink, "_blank")}
                       >
-                        <Train className="h-4 w-4" />
-                        Buchen
+                        <Train className="h-5 w-5 mr-2" />
+                        Jetzt buchen
                       </Button>
                     )}
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      {/* Preisverlauf als Toggle-Button, exklusiv */}
+                      <Button
+                        variant={interval.priceHistory && interval.priceHistory.length > 1 && expandedItems.has(`preisverlauf-${index}`) ? "default" : "outline"}
+                        size="sm"
+                        className="w-full h-9 text-xs"
+                        onClick={() => {
+                          if (interval.priceHistory && interval.priceHistory.length > 1) {
+                            toggleExpanded(`preisverlauf-${index}`)
+                            if (expandedItems.has(index)) toggleExpanded(index)
+                          }
+                        }}
+                        disabled={!interval.priceHistory || interval.priceHistory.length <= 1}
+                        title={
+                          !interval.priceHistory || interval.priceHistory.length <= 1
+                            ? "Keine Preisentwicklung verfügbar"
+                            : "Preisentwicklung anzeigen"
+                        }
+                      >
+                        {getTrendIcon(interval.priceHistory)}
+                        Preisentwicklung
+                      </Button>
+                      
+                      <Button
+                        variant={expandedItems.has(index) ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          toggleExpanded(index)
+                          if (expandedItems.has(`preisverlauf-${index}`)) toggleExpanded(`preisverlauf-${index}`)
+                        }}
+                        className={`h-9 text-xs ${!interval.priceHistory || interval.priceHistory.length <= 1 ? 'col-span-2' : ''}`}
+                      >
+                        <Train className="h-3.5 w-3.5 mr-1.5" />
+                        {expandedItems.has(index) ? 'Weniger' : 'Fahrtverlauf'}
+                      </Button>
+                    </div>
                   </div>
                   
-                  {/* Journey timeline spanning full width - controlled by global switch */}
-                  {showAllJourneyDetails && (
-                    <div className="pt-2 border-t border-gray-200">
+                  {/* Exklusiv: Preisverlauf */}
+                  {interval.priceHistory && interval.priceHistory.length > 1 && expandedItems.has(`preisverlauf-${index}`) && (
+                    <div className="mt-5 pt-5 border-t border-gray-100 animate-in fade-in slide-in-from-top-2 duration-200">
+                       {/* Keine doppelte Box mehr, Chart direkt rendern */}
+                       <PriceHistoryChart history={interval.priceHistory} title="Preisentwicklung" />
+                    </div>
+                  )}
+
+                  {/* Exklusiv: Fahrtverlauf */}
+                  {expandedItems.has(index) && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                        <JourneyTimeline interval={interval} />
+                        <MobileJourneyTimeline interval={interval} />
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Desktop View - Redesigned */}
+                <div
+                  className={`hidden md:block p-6 rounded-2xl relative text-sm shadow-sm transition-all hover:shadow-md border bg-white ${leftBorder} ${cardBg}`}
+                  style={isRecommended || isBestPrice ? { paddingTop: 48 } : {}}
+                >
+                  {/* Badges (Recommended / Best Price) */}
+                  {(isRecommended || isBestPrice) && (
+                    <div className="absolute top-2 left-2 z-10 flex gap-2">
+                      {isRecommended && (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Badge className="bg-amber-100 text-amber-800 border border-amber-400 rounded-full cursor-help flex items-center gap-1 px-2 py-1 font-semibold shadow-sm">
+                              <Star className="h-3 w-3" />
+                              Empfohlen
+                            </Badge>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-64 text-sm">
+                            <div className="font-semibold mb-2 text-amber-800">🧠 Intelligente Empfehlung</div>
+                            <div className="space-y-2">
+                              <div className="text-xs">Basiert auf einer gewichteten Bewertung von:</div>
+                              <ul className="list-disc list-inside space-y-1 text-xs text-gray-600">
+                                <li><strong>45%</strong> Preis</li>
+                                <li><strong>30%</strong> Reisezeit</li>
+                                <li><strong>25%</strong> Anzahl Umstiege (Komfort)</li>
+                                <li><strong>Direktverbindung</strong> wird bis zu 40% Aufpreis bevorzugt</li>
+                              </ul>
+                              <div className="text-xs mt-2 p-2 bg-amber-100 rounded font-medium">
+                                {recommendation?.explanation.reason}
+                              </div>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                      {isBestPrice && (
+                        <Badge className="bg-green-100 text-green-800 border border-green-400 rounded-full flex items-center gap-1 px-2 py-1 font-semibold shadow-sm">
+                          <Euro className="h-3 w-3" />
+                          Bestpreis
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-[1.5fr_1.5fr_3fr_2fr_2fr_2fr] gap-6 items-center min-h-[88px]">
+                    
+                    {/* Abfahrt */}
+                    <div className="relative">
+                      <div className="font-bold text-lg text-gray-900">
+                        {new Date(interval.abfahrtsZeitpunkt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                      <div className="text-xs text-gray-500 truncate" title={interval.abfahrtsOrt}>
+                        {interval.abfahrtsOrt}
+                      </div>
+                      <ArrowRight className="absolute -right-5 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-300" />
+                    </div>
+
+                    {/* Ankunft */}
+                    <div>
+                      <div className="font-bold text-lg text-gray-900">
+                        {new Date(interval.ankunftsZeitpunkt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                      <div className="text-xs text-gray-500 truncate" title={interval.ankunftsOrt}>
+                        {interval.ankunftsOrt}
+                      </div>
+                    </div>
+
+                    {/* Dauer & Fahrzeuge */}
+                    <div>
+                      <div className="flex items-center gap-2 font-medium text-gray-900">
+                        {calculateDuration(interval.abfahrtsZeitpunkt, interval.ankunftsZeitpunkt)}
+                        {isFastest && (
+                          <span className="inline-flex items-center px-1 py-0.5 rounded bg-purple-100 text-purple-800 text-[10px] font-semibold ml-1">
+                            <TrendingUp className="h-3 w-3 mr-1" />
+                            Schnell
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        <VehicleTypesSummary interval={interval} />
+                      </div>
+                    </div>
+
+                    {/* Umstiege & Fahrtverlauf */}
+                    <div>
+                      <div className="font-medium text-gray-900 flex items-center gap-1">
+                         <Shuffle className="h-3.5 w-3.5 text-gray-400" />
+                         {interval.umstiegsAnzahl === 0 ? "Direkt" : interval.umstiegsAnzahl}
+                      </div>
+                      
+                      {/* Details Toggle */}
+                      {!showAllJourneyDetails && (
+                        <button
+                          onClick={() => toggleExpanded(index)}
+                          className={`text-xs font-medium flex items-center gap-1 mt-1.5 transition-colors ${expandedItems.has(index) ? 'text-blue-700' : 'text-gray-500 hover:text-blue-600'}`}
+                        >
+                          <Info className="h-3 w-3" />
+                          Fahrtverlauf
+                          {expandedItems.has(index) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Preis & History */}
+                    <div>
+                      <div className={`font-bold text-xl px-2 py-1 rounded inline-block ${getIntervalPriceColor(interval.preis)}`}>
+                        {interval.preis}€
+                      </div>
+                      {/* Price History Toggle */}
+                      {interval.priceHistory && interval.priceHistory.length > 1 ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleExpanded(`preisverlauf-${index}`);
+                          }}
+                          className={`text-xs font-medium flex items-center gap-1 mt-1 transition-colors ${expandedItems.has(`preisverlauf-${index}`) ? 'text-blue-700' : 'text-gray-500 hover:text-blue-600'}`}
+                        >
+                          {getTrendIcon(interval.priceHistory)}
+                          Preisentwicklung
+                          {expandedItems.has(`preisverlauf-${index}`) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        </button>
+                      ) : (
+                         <div className="text-xs text-gray-300 flex items-center gap-1 mt-1 cursor-not-allowed" title="Keine Daten verfügbar">
+                            <Minus className="h-3 w-3" />
+                            Preisentwicklung
+                         </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex justify-end">
+                       {bookingLink && (
+                        <Button
+                          size="default"
+                          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm w-full flex items-center justify-center gap-2"
+                          onClick={() => window.open(bookingLink, "_blank")}
+                        >
+                          <Train className="h-4 w-4" />
+                          Buchen
+                        </Button>
+                      )}
+                    </div>
+                  </div>
                   
-                  {/* Individual expandable journey timeline (fallback when global switch is off) */}
-                  {!showAllJourneyDetails && expandedItems.has(index) && (
-                    <div className="pt-2 border-t border-gray-200">
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  {/* Expanded Content: Price History */}
+                  {interval.priceHistory && interval.priceHistory.length > 1 && expandedItems.has(`preisverlauf-${index}`) && (
+                    <div className="mt-5 pt-5 border-t border-gray-100 animate-in fade-in slide-in-from-top-2 duration-200">
+                       {/* Keine doppelte Box mehr, Chart direkt rendern */}
+                       <PriceHistoryChart history={interval.priceHistory} title="Preisentwicklung dieser Verbindung" />
+                    </div>
+                  )}
+
+                  {/* Expanded Content: Journey Details */}
+                  {(showAllJourneyDetails || expandedItems.has(index)) && (
+                    <div className="mt-5 pt-5 border-t border-gray-100 animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
                         <JourneyTimeline interval={interval} />
                       </div>
                     </div>
