@@ -414,7 +414,7 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
         <div className="text-center py-8">
           <p className="text-red-600 font-medium">Keine Bestpreise gefunden</p>
           <p className="text-gray-600 text-sm mt-2">
-            Bitte überprüfen Sie Ihre Bahnhofsnamen und versuchen Sie es erneut.
+            Bitte überprüfe die Bahnhofsnamen und versuche es erneut.
           </p>
         </div>
     )

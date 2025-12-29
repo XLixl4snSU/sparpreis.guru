@@ -74,7 +74,7 @@ export function PriceCalendar({ results, onDayClick, startStation, zielStation, 
   if (resultDates.length === 0 && !isStreaming) {
     return (
       <div className="text-center py-8 text-gray-500">
-        Keine Suchergebnisse verfügbar. Bitte starten Sie eine neue Suche.
+        Keine Suchergebnisse verfügbar. Bitte starte eine neue Suche.
       </div>
     )
   }
@@ -644,7 +644,7 @@ export function PriceCalendar({ results, onDayClick, startStation, zielStation, 
               {startStation.name} → {zielStation.name}
             </div>
             <div className="text-xs mt-1">
-              Klicken Sie auf einen Tag mit Preis für alle Verbindungen • {resultDates.length} Tage durchsucht
+              Klicke auf einen Tag mit Preis für alle Verbindungen • {resultDates.length} Tage durchsucht
               {isStreaming && (
                 <span className="text-blue-600 ml-2">
                   (Weitere Ergebnisse werden geladen...)
