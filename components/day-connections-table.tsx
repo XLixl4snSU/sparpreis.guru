@@ -370,11 +370,11 @@ export function ConnectionsTable({
     )
   }
   // Set showOnlyCheapest default to false if undefined
-  React.useEffect(() => {
-    if (typeof showOnlyCheapest === "undefined") {
-      setShowOnlyCheapest(false)
-    }
-  }, [showOnlyCheapest, setShowOnlyCheapest])
+  // React.useEffect(() => {
+  //   if (typeof showOnlyCheapest === "undefined") {
+  //     setShowOnlyCheapest(false)
+  //   }
+  // }, [showOnlyCheapest, setShowOnlyCheapest])
 
   return (
     <div className="bg-blue-50 p-4 rounded-lg">

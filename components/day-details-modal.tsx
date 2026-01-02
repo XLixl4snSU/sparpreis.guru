@@ -93,7 +93,7 @@ export function DayDetailsModal({
   onNavigateDay,
   dayKeys = [],
 }: DayDetailsModalProps) {
-  const [showOnlyCheapest, setShowOnlyCheapest] = useState(true)
+  const [showOnlyCheapest, setShowOnlyCheapest] = useState(false)
   const [showAllJourneyDetails, setShowAllJourneyDetails] = useState<boolean>(false)
   const [sortKey, setSortKey] = useState<'preis' | 'abfahrt' | 'ankunft' | 'umstiege' | 'dauer'>('preis')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')

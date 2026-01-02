@@ -18,7 +18,7 @@ interface SearchParams {
   maximaleUmstiege?: string
   abfahrtAb?: string
   ankunftBis?: string
-  tage?: string // JSON-String mit Array der gewünschten Tage
+  wochentage?: string // Only weekdays
   umstiegszeit?: string
 }
 
@@ -81,10 +81,38 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
   const calendarRef = useRef<HTMLDivElement>(null)
   const [hasScrolledToCalendar, setHasScrolledToCalendar] = useState(false)
 
-  // Anzahl erwarteter Tage aus den Suchparametern berechnen (falls vorhanden)
+  // Calculate expected days from weekdays
   const expectedDays = (() => {
+    if (!searchParams.reisezeitraumAb || !searchParams.reisezeitraumBis) {
+      return undefined
+    }
     try {
-      return searchParams.tage ? (JSON.parse(searchParams.tage) as string[]).length : undefined
+      // Parse weekdays from readable format or default to all days
+      let weekdays: number[]
+      if (searchParams.wochentage) {
+        const decoded = decodeURIComponent(searchParams.wochentage)
+        if (decoded.startsWith('[')) {
+          // Old JSON format
+          weekdays = JSON.parse(decoded)
+        } else {
+          // New readable format: "1,2,3,4,5"
+          weekdays = decoded.split(',').map(Number).filter(n => !isNaN(n) && n >= 0 && n <= 6)
+        }
+      } else {
+        // No weekdays param = all days
+        weekdays = [1, 2, 3, 4, 5, 6, 0]
+      }
+      
+      const startDate = new Date(searchParams.reisezeitraumAb)
+      const endDate = new Date(searchParams.reisezeitraumBis)
+      let count = 0
+      
+      for (let d = new Date(startDate); d <= endDate && count < 30; d.setDate(d.getDate() + 1)) {
+        if (weekdays.includes(d.getDay())) {
+          count++
+        }
+      }
+      return count
     } catch {
       return undefined
     }
@@ -201,7 +229,7 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
     maximaleUmstiege: searchParams.maximaleUmstiege,
     abfahrtAb: searchParams.abfahrtAb,
     ankunftBis: searchParams.ankunftBis,
-    tage: searchParams.tage,
+    wochentage: searchParams.wochentage, // Changed from 'tage'
     umstiegszeit: searchParams.umstiegszeit,
   })
 
@@ -215,7 +243,7 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
       setLoading(true)
       setPriceResults({})
       setIsStreaming(true)
-      processedDaysRef.current = new Set() // Reset für neue Suche
+      processedDaysRef.current = new Set()
       
       // Generiere sessionId sofort im Frontend
       const newSessionId = generateSessionId()
@@ -226,19 +254,35 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
       setAbortController(controller)
 
       try {
+        // Parse weekdays from readable format
+        let weekdays: number[]
+        if (searchParams.wochentage) {
+          const decoded = decodeURIComponent(searchParams.wochentage)
+          if (decoded.startsWith('[')) {
+            // Old JSON format
+            weekdays = JSON.parse(decoded)
+          } else {
+            // New readable format: "1,2,3,4,5"
+            weekdays = decoded.split(',').map(Number).filter(n => !isNaN(n) && n >= 0 && n <= 6)
+          }
+        } else {
+          // No weekdays param = all days
+          weekdays = [1, 2, 3, 4, 5, 6, 0]
+        }
+
         const response = await fetch("/api/search-prices", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          signal: controller.signal, // AbortController hinzufügen
+          signal: controller.signal,
           body: JSON.stringify({
             sessionId: newSessionId,
             start: searchParams.start,
             ziel: searchParams.ziel,
-            tage: searchParams.tage ? JSON.parse(searchParams.tage) : undefined,
             reisezeitraumAb: searchParams.reisezeitraumAb || new Date().toISOString().split("T")[0],
             reisezeitraumBis: searchParams.reisezeitraumBis,
+            wochentage: weekdays,
             alter: searchParams.alter || "ERWACHSENER",
             ermaessigungArt: searchParams.ermaessigungArt || "KEINE_ERMAESSIGUNG",
             ermaessigungKlasse: searchParams.ermaessigungKlasse || "KLASSENLOS",
@@ -365,7 +409,7 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
     searchParams.ermaessigungKlasse,
     searchParams.abfahrtAb,
     searchParams.ankunftBis,
-    searchParams.tage,
+    searchParams.wochentage, // Changed from 'tage'
     searchParams.umstiegszeit,
   ])
 

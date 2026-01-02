@@ -3,6 +3,7 @@ import { TrainResults } from "@/components/train-results"
 import { FAQPopup } from "@/components/faq-popup"
 import { getAppVersion, getCurrentYear } from "@/lib/app-info"
 import { Github } from "lucide-react"
+import { redirect } from "next/navigation"
 
 interface SearchParams {
   start?: string
@@ -12,14 +13,21 @@ interface SearchParams {
   alter?: string
   ermaessigungArt?: string
   ermaessigungKlasse?: string
-  abfahrtAb?: string // Fixed typo: was "abfahrtab" 
+  abfahrtAb?: string
   ankunftBis?: string
   klasse?: string
   schnelleVerbindungen?: string
   nurDeutschlandTicketVerbindungen?: string
   maximaleUmstiege?: string
-  tage?: string // JSON-String mit Array der gewünschten Tage
-  umstiegszeit?: string // Das hat gefehlt!
+  umstiegszeit?: string
+  wochentage?: string
+}
+
+// Helper function to get tomorrow's date in YYYY-MM-DD format
+function getTomorrowISO() {
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  return tomorrow.toISOString().split("T")[0]
 }
 
 export default async function Page({
@@ -28,6 +36,45 @@ export default async function Page({
   searchParams: Promise<SearchParams>
 }) {
   const params = await searchParams
+  
+  // Validate and correct dates if they're in the past
+  if (params.start && params.ziel) {
+    const tomorrow = getTomorrowISO()
+    let needsRedirect = false
+    const correctedParams = new URLSearchParams()
+    
+    // Copy all existing params
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) {
+        correctedParams.set(key, value)
+      }
+    })
+    
+    // Check and correct reisezeitraumAb
+    if (params.reisezeitraumAb && params.reisezeitraumAb < tomorrow) {
+      correctedParams.set('reisezeitraumAb', tomorrow)
+      needsRedirect = true
+    }
+    
+    // Check and correct reisezeitraumBis if it's before reisezeitraumAb
+    const effectiveAb = params.reisezeitraumAb && params.reisezeitraumAb >= tomorrow 
+      ? params.reisezeitraumAb 
+      : tomorrow
+    
+    if (params.reisezeitraumBis && params.reisezeitraumBis < effectiveAb) {
+      // Set reisezeitraumBis to 2 days after effectiveAb
+      const abDate = new Date(effectiveAb)
+      abDate.setDate(abDate.getDate() + 2)
+      correctedParams.set('reisezeitraumBis', abDate.toISOString().split("T")[0])
+      needsRedirect = true
+    }
+    
+    // Redirect if any corrections were made
+    if (needsRedirect) {
+      redirect(`/?${correctedParams.toString()}`)
+    }
+  }
+  
   const hasSearch = params.start && params.ziel
   
   const currentYear = getCurrentYear()

@@ -54,6 +54,7 @@ interface SearchParams {
   start?: string
   ziel?: string
   reisezeitraumAb?: string
+  reisezeitraumBis?: string
   alter?: string
   ermaessigungArt?: string
   ermaessigungKlasse?: string
@@ -61,12 +62,10 @@ interface SearchParams {
   schnelleVerbindungen?: string
   nurDeutschlandTicketVerbindungen?: string
   maximaleUmstiege?: string
-  reisezeitraumBis?: string
   abfahrtAb?: string
   ankunftBis?: string
-  tage?: string
+  wochentage?: string // Only weekdays, not individual dates
   umstiegszeit?: string
-  wochentage?: string
 }
 
 interface TrainSearchFormProps {
@@ -184,13 +183,24 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
   const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>(() => {
     if (searchParams.wochentage) {
       try {
-        const arr = JSON.parse(searchParams.wochentage)
-        if (Array.isArray(arr) && arr.every(v => typeof v === 'number')) {
-          return arr
+        // Parse readable format: "1,2,3,4,5" or JSON array "[1,2,3,4,5]"
+        const decoded = decodeURIComponent(searchParams.wochentage)
+        if (decoded.startsWith('[')) {
+          // Old JSON format
+          const arr = JSON.parse(decoded)
+          if (Array.isArray(arr) && arr.every(v => typeof v === 'number')) {
+            return arr
+          }
+        } else {
+          // New readable format: "1,2,3,4,5"
+          const arr = decoded.split(',').map(Number).filter(n => !isNaN(n) && n >= 0 && n <= 6)
+          if (arr.length > 0) {
+            return arr
+          }
         }
       } catch {}
     }
-    return [1,2,3,4,5,6,0]
+    return [1,2,3,4,5,6,0] // All days by default
   })
 
   const selectedDates = useMemo(() => {
@@ -432,8 +442,21 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
       params.set("maximaleUmstiege", umstiegsOption)
     }
     
-    params.set("tage", JSON.stringify(selectedDates))
-    params.set("wochentage", JSON.stringify(selectedWeekdays))
+    // Only send weekdays if not all days are selected
+    const allDays = [1, 2, 3, 4, 5, 6, 0]
+    const isAllDaysSelected = allDays.every(day => selectedWeekdays.includes(day)) && selectedWeekdays.length === allDays.length
+    
+    if (!isAllDaysSelected) {
+      // Use readable format: "1,2,3,4,5" instead of JSON
+      const sortedWeekdays = [...selectedWeekdays].sort((a, b) => {
+        // Sort Monday-Sunday (1,2,3,4,5,6,0)
+        if (a === 0) return 1
+        if (b === 0) return -1
+        return a - b
+      })
+      params.set("wochentage", sortedWeekdays.join(','))
+    }
+    
     window.location.href = `/?${params.toString()}`
   }
 
