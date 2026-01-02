@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.2](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.0.1...v1.0.2) (2026-01-02)
+
+
+### Bug Fixes
+
+* Bump qs from 6.14.0 to 6.14.1 ([f095189](https://github.com/XLixl4snSU/sparpreis.guru/commit/f0951897e52b49f67d3878e1dbd184c2b4edee7d))
+* Change default for showOnlyCheapest to false ([fda5246](https://github.com/XLixl4snSU/sparpreis.guru/commit/fda52464667875114460c86f85755dff69b8ee5d))
+* date selection to use weekdays and ranges ([bc44a51](https://github.com/XLixl4snSU/sparpreis.guru/commit/bc44a5167f35fcac904a3d5eb2ff56e41fa6a1cc))
+
 ## [1.0.1](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.0.0...v1.0.1) (2025-12-29)
 
 
