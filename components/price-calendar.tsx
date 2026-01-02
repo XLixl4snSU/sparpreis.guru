@@ -89,28 +89,39 @@ export function PriceCalendar({ results, onDayClick, startStation, zielStation, 
       return dates
     }
     
-    // Prüfe zuerst, ob wir ein tage-Array in den searchParams haben
-    if (searchParams?.tage) {
+    // Berechne erwartete Daten aus Wochentagen und Datumsbereich
+    if (searchParams?.reisezeitraumAb && searchParams?.reisezeitraumBis) {
       try {
-        const expectedDates = JSON.parse(searchParams.tage) as string[]
+        // Parse weekdays from readable format or default to all days
+        let weekdays: number[]
+        if (searchParams.wochentage) {
+          const decoded = decodeURIComponent(searchParams.wochentage)
+          if (decoded.startsWith('[')) {
+            // Old JSON format
+            weekdays = JSON.parse(decoded)
+          } else {
+            // New readable format: "1,2,3,4,5"
+            weekdays = decoded.split(',').map(Number).filter(n => !isNaN(n) && n >= 0 && n <= 6)
+          }
+        } else {
+          // No weekdays param = all days
+          weekdays = [1, 2, 3, 4, 5, 6, 0]
+        }
+        
+        const startDate = new Date(searchParams.reisezeitraumAb)
+        const endDate = new Date(searchParams.reisezeitraumBis)
+        const expectedDates: string[] = []
+        
+        for (let d = new Date(startDate); d <= endDate && expectedDates.length < 30; d.setDate(d.getDate() + 1)) {
+          if (weekdays.includes(d.getDay())) {
+            expectedDates.push(formatDateKey(d))
+          }
+        }
+        
         return expectedDates.sort()
       } catch (error) {
-        console.warn('Could not parse tage array from searchParams:', error)
+        console.warn('Could not calculate expected dates from weekdays:', error)
       }
-    }
-    
-    // Fallback: Verwende die alten Parameter für aufeinanderfolgende Tage
-    if (expectedDays && searchParams?.reisezeitraumAb) {
-      const startDate = new Date(searchParams.reisezeitraumAb)
-      const expectedDates = []
-      
-      for (let i = 0; i < expectedDays; i++) {
-        const currentDate = new Date(startDate)
-        currentDate.setDate(startDate.getDate() + i)
-        expectedDates.push(formatDateKey(currentDate))
-      }
-      
-      return expectedDates
     }
     
     return dates

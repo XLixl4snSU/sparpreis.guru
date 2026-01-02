@@ -65,7 +65,9 @@ export async function POST(request: NextRequest) {
       sessionId: providedSessionId,
       start,
       ziel,
-      tage,
+      reisezeitraumAb,
+      reisezeitraumBis,
+      wochentage, // Changed from 'tage' to 'wochentage'
       alter,
       ermaessigungArt,
       ermaessigungKlasse,
@@ -79,13 +81,19 @@ export async function POST(request: NextRequest) {
     } = body
 
     // Record user search metrics
-    metricsCollector.recordUserSearch(tage?.length || 0)
+    const calculatedDates = calculateDatesFromWeekdays(
+      reisezeitraumAb,
+      reisezeitraumBis,
+      wochentage || [1, 2, 3, 4, 5, 6, 0]
+    )
+    metricsCollector.recordUserSearch(calculatedDates.length)
     metricsCollector.recordStreamingConnection()
 
     console.log("\n🚂 Starting bestpreissuche request")
     console.log("📋 Request parameters:")
     console.log("  - Route:", start, "→", ziel)
-    console.log("  - Days:", tage?.length || 0, "| Time:", abfahrtAb || "any", "-", ankunftBis || "any")
+    console.log("  - Weekdays:", wochentage)
+    console.log("  - Days:", calculatedDates.length, "| Time:", abfahrtAb || "any", "-", ankunftBis || "any")
     console.log("  - Class:", klasse, "| Max transfers:", maximaleUmstiege, "(type:", typeof maximaleUmstiege, ")")
     console.log("  - RAW maximaleUmstiege from body:", JSON.stringify(body.maximaleUmstiege))
     if (umstiegszeit && umstiegszeit !== "normal") {
@@ -210,8 +218,12 @@ export async function POST(request: NextRequest) {
         }
 
         try {
-          // Verwende tage-Array wenn vorhanden, sonst fallback zu altem System
-          datesToProcess = tage.slice(0, 30) // Limitiere auf max 30 Tage
+          // Calculate dates from weekdays and date range
+          datesToProcess = calculateDatesFromWeekdays(
+            reisezeitraumAb,
+            reisezeitraumBis,
+            wochentage || [1, 2, 3, 4, 5, 6, 0]
+          ).slice(0, 30) // Limit to max 30 days
           maxDays = datesToProcess.length
           console.log(`\n🔍 Processing ${datesToProcess.length} specific dates`)
           console.log(`📊 Cache status: ${getCacheSize()} entries`)
@@ -644,4 +656,26 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     )
   }
+}
+
+// Helper function to calculate dates from weekdays
+function calculateDatesFromWeekdays(
+  startDate: string,
+  endDate: string,
+  weekdays: number[]
+): string[] {
+  const dates: string[] = []
+  const start = new Date(startDate)
+  const end = new Date(endDate)
+  
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    if (weekdays.includes(d.getDay())) {
+      const year = d.getFullYear()
+      const month = (d.getMonth() + 1).toString().padStart(2, "0")
+      const day = d.getDate().toString().padStart(2, "0")
+      dates.push(`${year}-${month}-${day}`)
+    }
+  }
+  
+  return dates
 }
