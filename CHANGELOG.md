@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.3](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.0.2...v1.0.3) (2026-01-06)
+
+
+### Bug Fixes
+
+* re-rendering of PriceHistoryChart when new results come in ([c7b2475](https://github.com/XLixl4snSU/sparpreis.guru/commit/c7b2475c0e338dde74a84226892ccf7e4c066467))
+* Wrong train names for regional trains ([ea67a10](https://github.com/XLixl4snSU/sparpreis.guru/commit/ea67a10b502865037d369b01815ce1b31fe708d2))
+
 ## [1.0.2](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.0.1...v1.0.2) (2026-01-02)
 
 
