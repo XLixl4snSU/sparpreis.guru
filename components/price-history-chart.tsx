@@ -1,5 +1,6 @@
 "use client"
 
+import { useMemo, memo } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 
@@ -31,7 +32,8 @@ function getTrend(history: PriceHistoryEntry[]) {
   }
 }
 
-export function PriceHistoryChart({ history, title }: PriceHistoryChartProps) {
+// Wrap component with React.memo to prevent re-renders if props haven't changed
+export const PriceHistoryChart = memo(function PriceHistoryChart({ history, title }: PriceHistoryChartProps) {
   if (!history || history.length < 1) {
     return (
       <div className="text-center text-sm text-gray-500 py-4">
@@ -40,24 +42,30 @@ export function PriceHistoryChart({ history, title }: PriceHistoryChartProps) {
     )
   }
 
-  // Prüfe ob mehrere Einträge am selben Tag existieren
-  const dates = history.map(entry => new Date(entry.recorded_at).toLocaleDateString('de-DE'))
-  const uniqueDates = new Set(dates)
-  const hasMultipleEntriesPerDay = dates.length > uniqueDates.size
+  // Memoize chart data and trend calculation to avoid re-computing on every render
+  const { data, hasMultipleEntriesPerDay, trend, minPrice, maxPrice } = useMemo(() => {
+    // Prüfe ob mehrere Einträge am selben Tag existieren
+    const dates = history.map(entry => new Date(entry.recorded_at).toLocaleDateString('de-DE'))
+    const uniqueDates = new Set(dates)
+    const hasMultipleEntriesPerDay = dates.length > uniqueDates.size
 
-  const data = history.map(entry => {
-    const entryDate = new Date(entry.recorded_at)
-    // Immer Uhrzeit anzeigen, nicht nur bei mehreren Werten
-    const label = entryDate.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-    return {
-      date: label,
-      preis: entry.preis,
-    }
-  })
+    const data = history.map(entry => {
+      const entryDate = new Date(entry.recorded_at)
+      // Immer Uhrzeit anzeigen, nicht nur bei mehreren Werten
+      const label = entryDate.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      return {
+        date: label,
+        preis: entry.preis,
+      }
+    })
 
-  const trend = getTrend(history)
-  const minPrice = Math.min(...history.map(h => h.preis))
-  const maxPrice = Math.max(...history.map(h => h.preis))
+    const trend = getTrend(history)
+    const minPrice = Math.min(...history.map(h => h.preis))
+    const maxPrice = Math.max(...history.map(h => h.preis))
+
+    return { data, hasMultipleEntriesPerDay, trend, minPrice, maxPrice }
+  }, [history])
+
 
   // Runde die Y-Achsen-Domain, um unschöne Nachkommastellen zu vermeiden
   const yDomain = [
@@ -123,4 +131,4 @@ export function PriceHistoryChart({ history, title }: PriceHistoryChartProps) {
       )}
     </div>
   )
-}
+})
