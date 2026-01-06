@@ -149,7 +149,7 @@ function JourneyTimeline({ interval }: { interval: any }) {
                   <div className="flex flex-col text-center flex-shrink-0">
                     <div className={`${topRowHeight} flex items-center justify-center`}>
                       <div className={`px-2 py-1 rounded font-semibold ${textSize} ${vehicleStyle.color} ${vehicleStyle.bg} ${vehicleStyle.border} border whitespace-nowrap shadow-sm`}>
-                        {abschnitt.verkehrsmittel?.name || abschnitt.verkehrsmittel?.kategorie || abschnitt.verkehrsmittel?.produktGattung || 'Zug'}
+                        {abschnitt.verkehrsmittel?.mittelText || abschnitt.verkehrsmittel?.name || abschnitt.verkehrsmittel?.kategorie || abschnitt.verkehrsmittel?.produktGattung || 'Zug'}
                       </div>
                     </div>
                     <div className={`${textSize} text-gray-500 whitespace-nowrap mt-1`}>
@@ -337,7 +337,7 @@ export function ConnectionsTable({
               {/* Vehicle and duration */}
               <div className="flex items-center justify-between mb-1">
                 <div className={`px-2 py-1 rounded font-semibold text-xs ${vehicleStyle.color} ${vehicleStyle.bg} ${vehicleStyle.border} border whitespace-nowrap shadow-sm`}>
-                  {abschnitt.verkehrsmittel?.name || abschnitt.verkehrsmittel?.kategorie || abschnitt.verkehrsmittel?.produktGattung || 'Zug'}
+                  {abschnitt.verkehrsmittel?.mittelText || abschnitt.verkehrsmittel?.name || abschnitt.verkehrsmittel?.kategorie || abschnitt.verkehrsmittel?.produktGattung || 'Zug'}
                 </div>
                 <div className="text-xs text-gray-500">
                   {duration}

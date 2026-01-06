@@ -46,6 +46,7 @@ interface TrainResult {
         produktGattung?: string
         kategorie?: string
         name?: string
+        mittelText?: string
       }
     }>
   }>

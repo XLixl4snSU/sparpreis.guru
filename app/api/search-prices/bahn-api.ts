@@ -80,6 +80,7 @@ interface IntervalAbschnitt {
     produktGattung?: string
     kategorie?: string
     name?: string
+    mittelText?: string
   }
 }
 
@@ -93,7 +94,7 @@ interface IntervalDetails {
   info: string
   umstiegsAnzahl: number
   isCheapestPerInterval?: boolean
-  priceHistory?: PriceHistoryEntry[] // Neu: Preishistorie für diese Verbindung
+  priceHistory?: PriceHistoryEntry[]
 }
 
 interface TrainResult {
@@ -102,7 +103,7 @@ interface TrainResult {
   abfahrtsZeitpunkt: string
   ankunftsZeitpunkt: string
   allIntervals?: IntervalDetails[]
-  priceHistory?: PriceHistoryEntry[] // Neu: Preishistorie für diesen Tag (günstigster Preis pro Abfragezeitpunkt)
+  priceHistory?: PriceHistoryEntry[]
 }
 
 interface TrainResults {
@@ -500,7 +501,8 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
               verkehrsmittel: abschnitt.verkehrsmittel ? {
                 produktGattung: abschnitt.verkehrsmittel.produktGattung,
                 kategorie: abschnitt.verkehrsmittel.kategorie,
-                name: abschnitt.verkehrsmittel.name
+                name: abschnitt.verkehrsmittel.name,
+                mittelText: abschnitt.verkehrsmittel.mittelText
               } : undefined
             }))
             const info = abschnitte.map((a: IntervalAbschnitt) => `${a.abfahrtsOrt} → ${a.ankunftsOrt}`).join(' | ')
