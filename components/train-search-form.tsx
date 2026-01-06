@@ -516,7 +516,7 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
                 ref={startInputRef}
                 id="start"
                 type="text"
-                placeholder="München"
+                placeholder="München Hbf"
                 value={start}
                 onChange={(e) => handleStartInput(e.target.value)}
                 onFocus={() => start.length >= 2 && setShowStartSuggestions(true)}
@@ -581,7 +581,7 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
                 ref={zielInputRef}
                 id="ziel"
                 type="text"
-                placeholder="Berlin"
+                placeholder="Berlin Hbf"
                 value={ziel}
                 onChange={(e) => handleZielInput(e.target.value)}
                 onFocus={() => ziel.length >= 2 && setShowZielSuggestions(true)}
