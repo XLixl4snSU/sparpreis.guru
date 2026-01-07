@@ -3,6 +3,7 @@ import Database from 'better-sqlite3'
 import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 import { gzipSync, gunzipSync } from 'zlib'
+import { generateConnectionId } from './utils'
 
 // Cache-Konfiguration
 const CACHE_FRESHNESS_TTL = 60 * 60 * 1000 // 60 Minuten - nach dieser Zeit werden Daten neu abgefragt
@@ -295,11 +296,16 @@ export function setCachedResult(
     
     // Preishistorie für alle Verbindungen speichern
     for (const [dateKey, result] of Object.entries(data)) {
-      // Hauptverbindung (falls vorhanden, aber meist allIntervals)
+      // Hauptverbindung
       if (result.abfahrtsZeitpunkt && result.ankunftsZeitpunkt) {
         const umstiegsAnzahl = result.allIntervals?.find(iv => iv.abfahrtsZeitpunkt === result.abfahrtsZeitpunkt && iv.ankunftsZeitpunkt === result.ankunftsZeitpunkt)?.umstiegsAnzahl || 0
-        // WICHTIG: Verwende vollständige Timestamps (mit Datum), nicht nur Uhrzeit!
-        const connectionId = `${params.startStationId}-${params.zielStationId}-${result.abfahrtsZeitpunkt}-${result.ankunftsZeitpunkt}-${umstiegsAnzahl}`
+        const connectionId = generateConnectionId(
+          params.startStationId,
+          params.zielStationId,
+          result.abfahrtsZeitpunkt,
+          result.ankunftsZeitpunkt,
+          umstiegsAnzahl
+        )
         
         stmtInsertPriceHistory.run(
           connectionId,
@@ -310,8 +316,8 @@ export function setCachedResult(
           params.ermaessigungArt,
           params.ermaessigungKlasse,
           params.klasse,
-          result.abfahrtsZeitpunkt, // Voller ISO Timestamp: 2025-11-10T21:00:00
-          result.ankunftsZeitpunkt, // Voller ISO Timestamp: 2025-11-11T06:00:00
+          result.abfahrtsZeitpunkt,
+          result.ankunftsZeitpunkt,
           result.preis,
           result.info,
           now
@@ -321,8 +327,13 @@ export function setCachedResult(
       // Alle Intervalle speichern
       if (result.allIntervals) {
         for (const interval of result.allIntervals) {
-          // WICHTIG: Verwende vollständige Timestamps (mit Datum), nicht nur Uhrzeit!
-          const connectionId = `${params.startStationId}-${params.zielStationId}-${interval.abfahrtsZeitpunkt}-${interval.ankunftsZeitpunkt}-${interval.umstiegsAnzahl}`
+          const connectionId = generateConnectionId(
+            params.startStationId,
+            params.zielStationId,
+            interval.abfahrtsZeitpunkt,
+            interval.ankunftsZeitpunkt,
+            interval.umstiegsAnzahl
+          )
           
           stmtInsertPriceHistory.run(
             connectionId,
@@ -333,8 +344,8 @@ export function setCachedResult(
             params.ermaessigungArt,
             params.ermaessigungKlasse,
             params.klasse,
-            interval.abfahrtsZeitpunkt, // Voller ISO Timestamp: 2025-11-10T21:00:00
-            interval.ankunftsZeitpunkt, // Voller ISO Timestamp: 2025-11-11T06:00:00
+            interval.abfahrtsZeitpunkt,
+            interval.ankunftsZeitpunkt,
             interval.preis,
             interval.info,
             now

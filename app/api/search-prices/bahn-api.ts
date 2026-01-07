@@ -10,7 +10,7 @@ import {
   type PriceHistoryEntry
 } from './cache'
 import { metricsCollector } from '@/app/api/metrics/collector'
-import { formatDateKey } from './utils';
+import { formatDateKey, generateConnectionId, passesTimeFilter } from './utils';
 
 
 
@@ -239,7 +239,13 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
       
       // Erstelle Connection-IDs für gefilterte Verbindungen
       const filteredConnectionIds = umstiegsFilteredIntervals.map((interval: any) => 
-        `${config.startStationNormalizedId}-${config.zielStationNormalizedId}-${interval.abfahrtsZeitpunkt}-${interval.ankunftsZeitpunkt}-${interval.umstiegsAnzahl}`
+        generateConnectionId(
+          config.startStationNormalizedId,
+          config.zielStationNormalizedId,
+          interval.abfahrtsZeitpunkt,
+          interval.ankunftsZeitpunkt,
+          interval.umstiegsAnzahl
+        )
       )
       
       // Lade Preishistorie nur für die gefilterten Connection-IDs
@@ -256,7 +262,13 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
       const intervalsWithHistory = umstiegsFilteredIntervals.map((interval: any) => ({
         ...interval,
         priceHistory: getConnectionPriceHistory({
-          connectionId: `${config.startStationNormalizedId}-${config.zielStationNormalizedId}-${interval.abfahrtsZeitpunkt}-${interval.ankunftsZeitpunkt}-${interval.umstiegsAnzahl}`,
+          connectionId: generateConnectionId(
+            config.startStationNormalizedId,
+            config.zielStationNormalizedId,
+            interval.abfahrtsZeitpunkt,
+            interval.ankunftsZeitpunkt,
+            interval.umstiegsAnzahl
+          ),
           alter: config.alter,
           ermaessigungArt: config.ermaessigungArt || "KEINE_ERMAESSIGUNG",
           ermaessigungKlasse: config.ermaessigungKlasse || "KLASSENLOS",
@@ -547,29 +559,12 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
     })
 
     // Jetzt Zeitfilter für aktuelle Anfrage anwenden
-    const timeFilteredIntervals = finalAllIntervals.filter(interval => {
-      if (!config.abfahrtAb && !config.ankunftBis) return true
-      
-      const ersteAbfahrt = interval.abfahrtsZeitpunkt
-      const letzteAnkunft = interval.ankunftsZeitpunkt
-      
-      let abfahrtOk = true
-      let ankunftOk = true
-      
-      if (config.abfahrtAb) {
-        const abfahrtTime = new Date(`1970-01-01T${ersteAbfahrt.split('T')[1]}`)
-        const filterTime = new Date(`1970-01-01T${config.abfahrtAb}:00`)
-        abfahrtOk = abfahrtTime >= filterTime
-      }
-      
-      if (config.ankunftBis) {
-        const ankunftTime = new Date(`1970-01-01T${letzteAnkunft.split('T')[1]}`)
-        const filterTime = new Date(`1970-01-01T${config.ankunftBis}:00`)
-        ankunftOk = ankunftTime <= filterTime
-      }
-      
-      return abfahrtOk && ankunftOk
-    })
+    const timeFilteredIntervals = finalAllIntervals.filter(interval =>
+      passesTimeFilter(interval.abfahrtsZeitpunkt, interval.ankunftsZeitpunkt, {
+        abfahrtAb: config.abfahrtAb,
+        ankunftBis: config.ankunftBis
+      })
+    )
 
     // Umstiegs-Filterung anwenden
     const umstiegsFilteredIntervals = timeFilteredIntervals.filter(interval => {

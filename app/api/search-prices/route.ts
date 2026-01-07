@@ -1,22 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { globalRateLimiter } from './rate-limiter'
 import { searchBahnhof, getBestPrice } from './bahn-api'
-import { updateProgress, updateAverageResponseTimes, getAverageResponseTimes } from './utils'
+import { updateProgress, updateAverageResponseTimes, getAverageResponseTimes, passesTimeFilter } from './utils'
 import { generateCacheKey, getCachedResult, getCacheSize, type PriceHistoryEntry } from './cache'
 import { recommendBestPrice } from '@/lib/recommendation-engine'
 import { metricsCollector } from '@/app/api/metrics/collector'
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-
-// Hilfsfunktion für lokales Datum im Format YYYY-MM-DD
-function formatDateKey(date: Date) {
-  const year = date.getFullYear()
-  const month = (date.getMonth() + 1).toString().padStart(2, "0")
-  const day = date.getDate().toString().padStart(2, "0")
-  return `${year}-${month}-${day}`
-}
 
 interface TrainResult {
   preis: number
@@ -355,69 +346,9 @@ export async function POST(request: NextRequest) {
                 const priceData = dayResponse.result[dateKey]
                 if (priceData && priceData.allIntervals && Array.isArray(priceData.allIntervals)) {
                   
-                  const filteredIntervals = priceData.allIntervals.filter(interval => {
-                    const depDate = new Date(interval.abfahrtsZeitpunkt)
-                    const arrDate = new Date(interval.ankunftsZeitpunkt)
-                    const depMinutes = depDate.getHours() * 60 + depDate.getMinutes()
-                    const arrMinutes = arrDate.getHours() * 60 + arrDate.getMinutes()
-                    
-                    // Parse Filterzeiten
-                    const abfahrtAbMinutes = abfahrtAb ? (() => { const [h, m] = abfahrtAb.split(":").map(Number); return h * 60 + (m || 0) })() : null
-                    const ankunftBisMinutes = ankunftBis ? (() => { const [h, m] = ankunftBis.split(":").map(Number); return h * 60 + (m || 0) })() : null
-
-                    // Helper: Check if dates are same day
-                    const isSameDay = (date1: Date, date2: Date) => (
-                      date1.getFullYear() === date2.getFullYear() &&
-                      date1.getMonth() === date2.getMonth() &&
-                      date1.getDate() === date2.getDate()
-                    )
-
-                    // Helper: Check if arrival is next day
-                    const isNextDay = (depDate: Date, arrDate: Date) => {
-                      const nextDay = new Date(depDate)
-                      nextDay.setDate(depDate.getDate() + 1)
-                      return isSameDay(arrDate, nextDay)
-                    }
-
-                    // Beide Filter gesetzt
-                    if (abfahrtAbMinutes !== null && ankunftBisMinutes !== null) {
-                      if (abfahrtAbMinutes < ankunftBisMinutes) {
-                        // Zeitfenster innerhalb eines Tages (z.B. 10–18 Uhr): Nur Tagesverbindungen
-                        return isSameDay(depDate, arrDate) && 
-                               depMinutes >= abfahrtAbMinutes && 
-                               arrMinutes <= ankunftBisMinutes
-                      } else {
-                        // Zeitfenster über Mitternacht (z.B. 22–06 Uhr): Nachtverbindungen erlauben
-                        if (isSameDay(depDate, arrDate)) {
-                          // Abfahrt und Ankunft am selben Tag
-                          return depMinutes >= abfahrtAbMinutes
-                        } else if (isNextDay(depDate, arrDate)) {
-                          // Ankunft am Folgetag
-                          return depMinutes >= abfahrtAbMinutes && arrMinutes <= ankunftBisMinutes
-                        }
-                        return false
-                      }
-                    }
-                    
-                    // Nur abfahrtAb gesetzt
-                    if (abfahrtAbMinutes !== null) {
-                      return depMinutes >= abfahrtAbMinutes
-                    }
-                    
-                    // Nur ankunftBis gesetzt
-                    if (ankunftBisMinutes !== null) {
-                      if (isSameDay(depDate, arrDate)) {
-                        return arrMinutes <= ankunftBisMinutes
-                      } else if (isNextDay(depDate, arrDate)) {
-                        // Nachtverbindungen: nur wenn Abfahrt nach Ankunftszeit liegt
-                        return arrMinutes <= ankunftBisMinutes && depMinutes > arrMinutes
-                      }
-                      return false
-                    }
-                    
-                    // Kein Filter: alles erlauben
-                    return true
-                  })
+                  const filteredIntervals = priceData.allIntervals.filter(interval => 
+                    passesTimeFilter(interval.abfahrtsZeitpunkt, interval.ankunftsZeitpunkt, { abfahrtAb, ankunftBis })
+                  )
 
                   // WICHTIG: Aktualisiere allIntervals VOR der Bestpreis-Berechnung
                   priceData.allIntervals = filteredIntervals
