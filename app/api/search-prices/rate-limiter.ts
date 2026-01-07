@@ -22,7 +22,7 @@ class GlobalRateLimiter {
   private sessionRoundRobin: string[] = [] // Round-Robin Liste der Sessions
   private currentSessionIndex = 0 // Aktueller Index im Round-Robin
   private lastApiCallStart = 0 // Wann der letzte API-Call GESTARTET wurde
-  private minInterval = 1000 // Adaptive: Startet bei 1.2 Sekunden zwischen API-Call STARTS
+  private minInterval = 1000 // Adaptive: Startet bei 1.0 Sekunden zwischen API-Call STARTS
   private activeRequests = 0
   private readonly maxConcurrentRequests = 3 // Max 3 parallele Requests für bessere Performance
   
