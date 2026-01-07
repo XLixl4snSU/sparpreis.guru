@@ -4,16 +4,18 @@ import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 import { gzipSync, gunzipSync } from 'zlib'
 import { generateConnectionId } from './utils'
+import crypto from 'crypto'
 
 // Cache-Konfiguration
-const CACHE_FRESHNESS_TTL = 60 * 60 * 1000 // 60 Minuten - nach dieser Zeit werden Daten neu abgefragt
-const DATA_RETENTION_DAYS = 90 // Daten werden 90 Tage aufbewahrt
+const CACHE_FRESHNESS_TTL = 60 * 60 * 1000
+const DATA_RETENTION_DAYS = 90
 const DATA_RETENTION_MS = DATA_RETENTION_DAYS * 24 * 60 * 60 * 1000
-const STATION_SEARCH_RETENTION_DAYS = 7 // Station-Suche Cache wird nach 7 Tagen gelöscht
+const STATION_SEARCH_RETENTION_DAYS = 7
 const STATION_SEARCH_RETENTION_MS = STATION_SEARCH_RETENTION_DAYS * 24 * 60 * 60 * 1000
-
-// ENV-Variable für das Löschen vergangener Fahrten (standardmäßig aktiviert)
 const CLEANUP_PAST_CONNECTIONS = process.env.CLEANUP_PAST_CONNECTIONS !== 'false'
+
+// Database version for migrations
+const CURRENT_DB_VERSION = 2
 
 interface TrainResult {
   preis: number
@@ -56,75 +58,368 @@ const db = new Database(dbPath)
 db.pragma('journal_mode = WAL')
 db.pragma('synchronous = NORMAL')
 
-// Erstelle Tabellen
+// Schema Version Management
 db.exec(`
-  CREATE TABLE IF NOT EXISTS connection_cache (
-    cache_key TEXT NOT NULL,
-    data_compressed BLOB NOT NULL,
-    created_at INTEGER NOT NULL,
-    last_fetched_at INTEGER NOT NULL,
-    PRIMARY KEY (cache_key)
+  CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER PRIMARY KEY,
+    applied_at INTEGER NOT NULL
   );
-
-  CREATE INDEX IF NOT EXISTS idx_last_fetched ON connection_cache(last_fetched_at);
-
-  /* Legacy price_history (belassen für Abwärtskompatibilität, standardmäßig nicht mehr beschrieben) */
-  CREATE TABLE IF NOT EXISTS price_history (
-    connection_id TEXT NOT NULL,
-    start_station_id TEXT NOT NULL,
-    ziel_station_id TEXT NOT NULL,
-    date TEXT NOT NULL,
-    "alter" TEXT NOT NULL,
-    ermaessigung_art TEXT NOT NULL,
-    ermaessigung_klasse TEXT NOT NULL,
-    klasse TEXT NOT NULL,
-    abfahrts_zeitpunkt TEXT NOT NULL,
-    ankunfts_zeitpunkt TEXT NOT NULL,
-    preis REAL NOT NULL,
-    info TEXT NOT NULL,
-    recorded_at INTEGER NOT NULL,
-    PRIMARY KEY (connection_id, "alter", ermaessigung_art, ermaessigung_klasse, klasse, recorded_at)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_price_history_connection ON price_history(
-    start_station_id, ziel_station_id, date, "alter", ermaessigung_art, ermaessigung_klasse, klasse
-  );
-  CREATE INDEX IF NOT EXISTS idx_price_history_recorded ON price_history(recorded_at);
-
-  /* Station search cache */
-  CREATE TABLE IF NOT EXISTS station_search_cache (
-    search_term TEXT NOT NULL,
-    ext_id TEXT NOT NULL,
-    station_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    lat REAL,
-    lon REAL,
-    station_type TEXT,
-    products TEXT,
-    created_at INTEGER NOT NULL,
-    PRIMARY KEY (search_term, ext_id)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_station_search_term ON station_search_cache(search_term);
-  CREATE INDEX IF NOT EXISTS idx_station_created ON station_search_cache(created_at);
 `)
 
-// Prepared Statements
+function getCurrentSchemaVersion(): number {
+  const row = db.prepare('SELECT MAX(version) as version FROM schema_version').get() as { version: number | null }
+  return row?.version ?? 0
+}
+
+function setSchemaVersion(version: number) {
+  db.prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)').run(version, Date.now())
+}
+
+// Migration: Version 0 -> 1 (Legacy Schema)
+function migrateToV1() {
+  console.log('📦 Creating legacy schema (v1)...')
+  
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS connection_cache (
+      cache_key TEXT NOT NULL,
+      data_compressed BLOB NOT NULL,
+      created_at INTEGER NOT NULL,
+      last_fetched_at INTEGER NOT NULL,
+      PRIMARY KEY (cache_key)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_last_fetched ON connection_cache(last_fetched_at);
+
+    CREATE TABLE IF NOT EXISTS price_history (
+      connection_id TEXT NOT NULL,
+      start_station_id TEXT NOT NULL,
+      ziel_station_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      "alter" TEXT NOT NULL,
+      ermaessigung_art TEXT NOT NULL,
+      ermaessigung_klasse TEXT NOT NULL,
+      klasse TEXT NOT NULL,
+      abfahrts_zeitpunkt TEXT NOT NULL,
+      ankunfts_zeitpunkt TEXT NOT NULL,
+      preis REAL NOT NULL,
+      info TEXT NOT NULL,
+      recorded_at INTEGER NOT NULL,
+      PRIMARY KEY (connection_id, "alter", ermaessigung_art, ermaessigung_klasse, klasse, recorded_at)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_price_history_connection ON price_history(
+      start_station_id, ziel_station_id, date, "alter", ermaessigung_art, ermaessigung_klasse, klasse
+    );
+    CREATE INDEX IF NOT EXISTS idx_price_history_recorded ON price_history(recorded_at);
+
+    CREATE TABLE IF NOT EXISTS station_search_cache (
+      search_term TEXT NOT NULL,
+      ext_id TEXT NOT NULL,
+      station_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      lat REAL,
+      lon REAL,
+      station_type TEXT,
+      products TEXT,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (search_term, ext_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_station_search_term ON station_search_cache(search_term);
+    CREATE INDEX IF NOT EXISTS idx_station_created ON station_search_cache(created_at);
+  `)
+  
+  setSchemaVersion(1)
+}
+
+// Helper: Generiere eindeutigen Hash für Verbindung
+function generateRouteHash(
+  startStationId: string,
+  zielStationId: string,
+  date: string,
+  departureTime: string,
+  arrivalTime: string
+): string {
+  const data = `${startStationId}|${zielStationId}|${date}|${departureTime}|${arrivalTime}`
+  return crypto.createHash('sha256').update(data).digest('hex').substring(0, 16)
+}
+
+// Helper: Extrahiere extId aus Station-String
+function extractStationExtId(stationCode: string): string {
+  // Format: A=1@O=AMSTERDAM@X=4881700@Y=52361653@U=81@L=8496058@i=U×008015588@
+  // Wir wollen nur die L=XXXXXXX (Location ID)
+  const match = stationCode.match(/@L=(\d+)@/)
+  if (match) {
+    return match[1] // z.B. "8496058"
+  }
+  // Fallback: ganzen String verwenden
+  return stationCode
+}
+
+// Migration: Version 1 -> 2 (Normalized Schema) - OPTIMIERT v2
+function migrateToV2() {
+  console.log('🔄 Migrating to normalized schema (v2)...')
+  console.log('⏳ This may take a while for large databases...')
+  
+  const startTime = Date.now()
+  
+  // Erstelle neue OPTIMIERTE normalisierte Tabellen
+  db.exec(`
+    -- Stations (NUR extId, keine langen Strings mehr!)
+    CREATE TABLE IF NOT EXISTS stations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ext_id TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_stations_ext_id ON stations(ext_id);
+
+    -- Verbindungsstammdaten
+    CREATE TABLE IF NOT EXISTS connections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      start_station_id INTEGER NOT NULL,
+      ziel_station_id INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      departure_time TEXT NOT NULL,
+      arrival_time TEXT NOT NULL,
+      transfers INTEGER NOT NULL,
+      route_hash TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (start_station_id) REFERENCES stations(id),
+      FOREIGN KEY (ziel_station_id) REFERENCES stations(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_connections_stations ON connections(start_station_id, ziel_station_id, date);
+    CREATE INDEX IF NOT EXISTS idx_connections_hash ON connections(route_hash);
+
+    -- Preis-Snapshots
+    CREATE TABLE IF NOT EXISTS price_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      connection_id INTEGER NOT NULL,
+      passenger_type TEXT NOT NULL,
+      discount_type TEXT NOT NULL,
+      discount_class TEXT NOT NULL,
+      travel_class TEXT NOT NULL,
+      price REAL NOT NULL,
+      recorded_at INTEGER NOT NULL,
+      FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_snapshots_connection ON price_snapshots(connection_id, passenger_type, discount_type, discount_class, travel_class);
+    CREATE INDEX IF NOT EXISTS idx_snapshots_recorded ON price_snapshots(recorded_at);
+  `)
+
+  // Migriere Daten von alter Struktur (price_history) zur neuen
+  const oldDataCount = (db.prepare('SELECT COUNT(*) as count FROM price_history').get() as { count: number }).count
+  
+  if (oldDataCount > 0) {
+    console.log(`📊 Migrating ${oldDataCount} price history entries...`)
+    
+    db.transaction(() => {
+      const uniqueConnections = db.prepare(`
+        SELECT DISTINCT 
+          start_station_id,
+          ziel_station_id,
+          date,
+          abfahrts_zeitpunkt,
+          ankunfts_zeitpunkt,
+          connection_id
+        FROM price_history
+      `).all() as Array<{
+        start_station_id: string
+        ziel_station_id: string
+        date: string
+        abfahrts_zeitpunkt: string
+        ankunfts_zeitpunkt: string
+        connection_id: string
+      }>
+
+      console.log(`🔗 Found ${uniqueConnections.length} unique connections`)
+
+      // Prepared Statements
+      const insertStation = db.prepare(`
+        INSERT OR IGNORE INTO stations (ext_id, created_at) VALUES (?, ?)
+      `)
+      const getStationId = db.prepare('SELECT id FROM stations WHERE ext_id = ?')
+      
+      const insertConnection = db.prepare(`
+        INSERT OR IGNORE INTO connections (
+          start_station_id, ziel_station_id, date, 
+          departure_time, arrival_time, transfers,
+          route_hash, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      const getConnectionId = db.prepare('SELECT id FROM connections WHERE route_hash = ?')
+      
+      const insertSnapshot = db.prepare(`
+        INSERT INTO price_snapshots (
+          connection_id, passenger_type, discount_type,
+          discount_class, travel_class, price, recorded_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `)
+
+      // Sammle alle einzigartigen Station-extIds (VERKÜRZT!)
+      const uniqueStationExtIds = new Set<string>()
+      for (const conn of uniqueConnections) {
+        uniqueStationExtIds.add(extractStationExtId(conn.start_station_id))
+        uniqueStationExtIds.add(extractStationExtId(conn.ziel_station_id))
+      }
+
+      console.log(`🚉 Creating ${uniqueStationExtIds.size} unique station records (using extId only)...`)
+      let stationCount = 0
+      for (const extId of uniqueStationExtIds) {
+        insertStation.run(extId, Date.now())
+        stationCount++
+        if (stationCount % 100 === 0) {
+          console.log(`  ✓ Processed ${stationCount}/${uniqueStationExtIds.size} stations`)
+        }
+      }
+      console.log(`✅ Created ${stationCount} station records (avg ~${Math.round(8)} bytes per station!)`)
+
+      // Erstelle alle Verbindungen
+      let processedConnections = 0
+      for (const conn of uniqueConnections) {
+        const transfers = parseInt(conn.connection_id.split('-').pop() || '0')
+        
+        const routeHash = generateRouteHash(
+          conn.start_station_id,
+          conn.ziel_station_id,
+          conn.date,
+          conn.abfahrts_zeitpunkt,
+          conn.ankunfts_zeitpunkt
+        )
+
+        // Hole Station-IDs mit extId
+        const startExtId = extractStationExtId(conn.start_station_id)
+        const zielExtId = extractStationExtId(conn.ziel_station_id)
+        
+        const startStationRow = getStationId.get(startExtId) as { id: number } | undefined
+        const zielStationRow = getStationId.get(zielExtId) as { id: number } | undefined
+
+        if (!startStationRow || !zielStationRow) {
+          console.warn(`⚠️ Station not found for connection: ${conn.connection_id}`)
+          continue
+        }
+
+        insertConnection.run(
+          startStationRow.id,
+          zielStationRow.id,
+          conn.date,
+          conn.abfahrts_zeitpunkt,
+          conn.ankunfts_zeitpunkt,
+          transfers,
+          routeHash,
+          Date.now()
+        )
+
+        processedConnections++
+        if (processedConnections % 1000 === 0) {
+          console.log(`  ✓ Processed ${processedConnections}/${uniqueConnections.length} connections`)
+        }
+      }
+
+      console.log(`✅ Created ${processedConnections} connection records`)
+
+      // Migriere alle Preis-Einträge
+      const allPrices = db.prepare('SELECT * FROM price_history').all() as Array<{
+        connection_id: string
+        start_station_id: string
+        ziel_station_id: string
+        date: string
+        alter: string
+        ermaessigung_art: string
+        ermaessigung_klasse: string
+        klasse: string
+        abfahrts_zeitpunkt: string
+        ankunfts_zeitpunkt: string
+        preis: number
+        recorded_at: number
+      }>
+
+      let processedSnapshots = 0
+      for (const price of allPrices) {
+        const routeHash = generateRouteHash(
+          price.start_station_id,
+          price.ziel_station_id,
+          price.date,
+          price.abfahrts_zeitpunkt,
+          price.ankunfts_zeitpunkt
+        )
+
+        const connection = getConnectionId.get(routeHash) as { id: number } | undefined
+        
+        if (connection) {
+          insertSnapshot.run(
+            connection.id,
+            price.alter,
+            price.ermaessigung_art,
+            price.ermaessigung_klasse,
+            price.klasse,
+            price.preis,
+            price.recorded_at
+          )
+          processedSnapshots++
+        }
+
+        if (processedSnapshots % 5000 === 0) {
+          console.log(`  ✓ Migrated ${processedSnapshots}/${allPrices.length} price snapshots`)
+        }
+      }
+
+      console.log(`✅ Migrated ${processedSnapshots} price snapshots`)
+    })()
+
+    console.log('💾 Backing up old price_history table...')
+    db.exec(`ALTER TABLE price_history RENAME TO price_history_backup_v1;`)
+    
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1)
+    console.log(`✅ Migration completed in ${duration}s`)
+    
+    const stationsCount = (db.prepare('SELECT COUNT(*) as count FROM stations').get() as { count: number }).count
+    const newConnectionsCount = (db.prepare('SELECT COUNT(*) as count FROM connections').get() as { count: number }).count
+    const newSnapshotsCount = (db.prepare('SELECT COUNT(*) as count FROM price_snapshots').get() as { count: number }).count
+    
+    // Realistische Speicherschätzung
+    const oldAvgRowSize = 1100 // ~1.1KB pro Zeile in alter Struktur
+    const newAvgRowSize = 80 // Deutlich kleiner mit extIds!
+    const oldSizeKB = (oldDataCount * oldAvgRowSize) / 1024
+    const newSizeKB = (stationsCount * 12 + newConnectionsCount * 80 + newSnapshotsCount * 50) / 1024
+    const savingsPercent = Math.round((1 - newSizeKB / oldSizeKB) * 100)
+    
+    console.log(`📊 New database stats:`)
+    console.log(`   - Stations: ${stationsCount} (only extId stored!)`)
+    console.log(`   - Connections: ${newConnectionsCount}`)
+    console.log(`   - Price snapshots: ${newSnapshotsCount}`)
+    console.log(`   - Estimated storage: ${Math.round(oldSizeKB)} KB → ${Math.round(newSizeKB)} KB`)
+    console.log(`   - Estimated savings: ~${savingsPercent}% (${Math.round(oldSizeKB - newSizeKB)} KB)`)
+  }
+  
+  setSchemaVersion(2)
+  
+  console.log('🔧 Optimizing database...')
+  db.pragma('optimize')
+  db.pragma('vacuum')
+  console.log('✅ Database optimization complete')
+}
+
+// Führe Migrationen aus
+const currentVersion = getCurrentSchemaVersion()
+console.log(`📦 Current database version: ${currentVersion}`)
+
+if (currentVersion < 1) {
+  migrateToV1()
+}
+
+if (currentVersion < 2) {
+  migrateToV2()
+}
+
+// Prepared Statements für alle Versionen
 const stmtGetCache = db.prepare('SELECT data_compressed, last_fetched_at FROM connection_cache WHERE cache_key = ?')
 const stmtSetCache = db.prepare(`
   INSERT OR REPLACE INTO connection_cache (cache_key, data_compressed, created_at, last_fetched_at)
   VALUES (?, ?, ?, ?)
 `)
-const stmtInsertPriceHistory = db.prepare(`
-  INSERT OR IGNORE INTO price_history (
-    connection_id, start_station_id, ziel_station_id, date, "alter", ermaessigung_art,
-    ermaessigung_klasse, klasse, abfahrts_zeitpunkt, ankunfts_zeitpunkt, preis, info, recorded_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`)
-const stmtCleanupCache = db.prepare('DELETE FROM connection_cache WHERE last_fetched_at < ?')
-const stmtCleanupHistory = db.prepare('DELETE FROM price_history WHERE recorded_at < ?')
 const stmtGetCacheCount = db.prepare('SELECT COUNT(*) as count FROM connection_cache')
-const stmtGetHistoryCount = db.prepare('SELECT COUNT(*) as count FROM price_history')
 
 // Station search prepared statements
 const stmtGetStationSearch = db.prepare(`
@@ -141,69 +436,39 @@ const stmtInsertStationSearch = db.prepare(`
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `)
 
-const stmtCleanupStationSearch = db.prepare('DELETE FROM station_search_cache WHERE created_at < ?')
+// V2: Prepared Statements für OPTIMIERTE normalisierte Tabellen (mit extId)
+const stmtInsertStation = db.prepare(`
+  INSERT OR IGNORE INTO stations (ext_id, created_at) VALUES (?, ?)
+`)
+const stmtGetStationId = db.prepare('SELECT id FROM stations WHERE ext_id = ?')
 
-// Neue Prepared Statements für Cleanup vergangener Fahrten
-const stmtCleanupPastConnectionCache = db.prepare(`
-  DELETE FROM connection_cache 
-  WHERE cache_key LIKE '%"date":"' || ? || '"%'
+const stmtInsertConnection = db.prepare(`
+  INSERT OR IGNORE INTO connections (
+    start_station_id, ziel_station_id, date,
+    departure_time, arrival_time, transfers,
+    route_hash, created_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `)
 
-const stmtCleanupPastPriceHistory = db.prepare(`
-  DELETE FROM price_history 
-  WHERE date < ?
-`)
+const stmtGetConnectionByHash = db.prepare('SELECT id FROM connections WHERE route_hash = ?')
 
-// Historie-Abfragen - OHNE Gruppierung nach Tag, um alle Zeitstempel zu behalten
-const stmtGetDayPriceHistory = db.prepare(`
-  SELECT MIN(preis) as min_preis, recorded_at
-  FROM price_history
-  WHERE start_station_id = ? 
-    AND ziel_station_id = ? 
-    AND date = ? 
-    AND "alter" = ? 
-    AND ermaessigung_art = ? 
-    AND ermaessigung_klasse = ? 
-    AND klasse = ?
-  GROUP BY recorded_at
-  ORDER BY recorded_at ASC
+const stmtInsertPriceSnapshot = db.prepare(`
+  INSERT INTO price_snapshots (
+    connection_id, passenger_type, discount_type,
+    discount_class, travel_class, price, recorded_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?)
 `)
 
 const stmtGetConnectionPriceHistory = db.prepare(`
-  SELECT preis, recorded_at
-  FROM price_history
-  WHERE connection_id = ?
-    AND "alter" = ?
-    AND ermaessigung_art = ?
-    AND ermaessigung_klasse = ?
-    AND klasse = ?
-  ORDER BY recorded_at ASC
-`)
-
-// Neue Version: Hole nur Preise für Verbindungen die den Filterkriterien entsprechen
-const stmtGetFilteredDayPriceHistory = db.prepare(`
-  SELECT MIN(preis) as min_preis, recorded_at
-  FROM price_history
-  WHERE start_station_id = ? 
-    AND ziel_station_id = ? 
-    AND date = ? 
-    AND "alter" = ? 
-    AND ermaessigung_art = ? 
-    AND ermaessigung_klasse = ? 
-    AND klasse = ?
-    AND connection_id IN (
-      SELECT DISTINCT connection_id FROM price_history ph2
-      WHERE ph2.start_station_id = ? 
-        AND ph2.ziel_station_id = ? 
-        AND ph2.date = ? 
-        AND ph2."alter" = ? 
-        AND ph2.ermaessigung_art = ? 
-        AND ph2.ermaessigung_klasse = ? 
-        AND ph2.klasse = ?
-        AND ph2.recorded_at = price_history.recorded_at
-    )
-  GROUP BY DATE(recorded_at / 1000, 'unixepoch')
-  ORDER BY recorded_at ASC
+  SELECT ps.price as preis, ps.recorded_at
+  FROM price_snapshots ps
+  JOIN connections c ON ps.connection_id = c.id
+  WHERE c.route_hash = ?
+    AND ps.passenger_type = ?
+    AND ps.discount_type = ?
+    AND ps.discount_class = ?
+    AND ps.travel_class = ?
+  ORDER BY ps.recorded_at ASC
 `)
 
 // Cache-Hilfsfunktionen
@@ -291,75 +556,61 @@ export function setCachedResult(
     const now = Date.now()
     const compressed = compressData(data)
     
-    // Cache-Eintrag speichern
     stmtSetCache.run(cacheKey, compressed, now, now)
     
-    // Preishistorie für alle Verbindungen speichern
-    for (const [dateKey, result] of Object.entries(data)) {
-      // Hauptverbindung
-      if (result.abfahrtsZeitpunkt && result.ankunftsZeitpunkt) {
-        const umstiegsAnzahl = result.allIntervals?.find(iv => iv.abfahrtsZeitpunkt === result.abfahrtsZeitpunkt && iv.ankunftsZeitpunkt === result.ankunftsZeitpunkt)?.umstiegsAnzahl || 0
-        const connectionId = generateConnectionId(
-          params.startStationId,
-          params.zielStationId,
-          result.abfahrtsZeitpunkt,
-          result.ankunftsZeitpunkt,
-          umstiegsAnzahl
-        )
-        
-        stmtInsertPriceHistory.run(
-          connectionId,
-          params.startStationId,
-          params.zielStationId,
-          params.date,
-          params.alter,
-          params.ermaessigungArt,
-          params.ermaessigungKlasse,
-          params.klasse,
-          result.abfahrtsZeitpunkt,
-          result.ankunftsZeitpunkt,
-          result.preis,
-          result.info,
-          now
-        )
-      }
-      
-      // Alle Intervalle speichern
-      if (result.allIntervals) {
-        for (const interval of result.allIntervals) {
-          const connectionId = generateConnectionId(
-            params.startStationId,
-            params.zielStationId,
-            interval.abfahrtsZeitpunkt,
-            interval.ankunftsZeitpunkt,
-            interval.umstiegsAnzahl
-          )
+    db.transaction(() => {
+      for (const [dateKey, result] of Object.entries(data)) {
+        if (result.abfahrtsZeitpunkt && result.ankunftsZeitpunkt) {
+          const umstiegsAnzahl = result.allIntervals?.find(iv => 
+            iv.abfahrtsZeitpunkt === result.abfahrtsZeitpunkt && 
+            iv.ankunftsZeitpunkt === result.ankunftsZeitpunkt
+          )?.umstiegsAnzahl || 0
           
-          stmtInsertPriceHistory.run(
-            connectionId,
+          savePriceSnapshot(
             params.startStationId,
             params.zielStationId,
             params.date,
+            result.abfahrtsZeitpunkt,
+            result.ankunftsZeitpunkt,
+            umstiegsAnzahl,
+            result.info,
             params.alter,
             params.ermaessigungArt,
             params.ermaessigungKlasse,
             params.klasse,
-            interval.abfahrtsZeitpunkt,
-            interval.ankunftsZeitpunkt,
-            interval.preis,
-            interval.info,
+            result.preis,
             now
           )
         }
+        
+        if (result.allIntervals) {
+          for (const interval of result.allIntervals) {
+            savePriceSnapshot(
+              params.startStationId,
+              params.zielStationId,
+              params.date,
+              interval.abfahrtsZeitpunkt,
+              interval.ankunftsZeitpunkt,
+              interval.umstiegsAnzahl,
+              interval.info,
+              params.alter,
+              params.ermaessigungArt,
+              params.ermaessigungKlasse,
+              params.klasse,
+              interval.preis,
+              now
+            )
+          }
+        }
       }
-    }
+    })()
     
-    // Logging
     const cacheCount = (stmtGetCacheCount.get() as { count: number }).count
-    const historyCount = (stmtGetHistoryCount.get() as { count: number }).count
+    const connectionsCount = (db.prepare('SELECT COUNT(*) as count FROM connections').get() as { count: number }).count
+    const snapshotsCount = (db.prepare('SELECT COUNT(*) as count FROM price_snapshots').get() as { count: number }).count
     
     if (cacheCount % 50 === 0 || cacheCount < 10) {
-      console.log(`💾 Cache: ${cacheCount} entries, Price history: ${historyCount} records`)
+      console.log(`💾 Cache: ${cacheCount} entries | Connections: ${connectionsCount} | Snapshots: ${snapshotsCount}`)
     }
     
     metricsCollector.updateCacheMetrics(0, cacheCount)
@@ -368,131 +619,67 @@ export function setCachedResult(
   }
 }
 
-// Cache-Bereinigung
-function cleanupCache(): void {
-  try {
-    const now = Date.now()
-    const cutoffTime = now - DATA_RETENTION_MS
-    const stationSearchCutoff = now - STATION_SEARCH_RETENTION_MS
-    
-    const cacheRemoved = stmtCleanupCache.run(cutoffTime).changes
-    const historyRemoved = stmtCleanupHistory.run(cutoffTime).changes
-    const stationSearchRemoved = stmtCleanupStationSearch.run(stationSearchCutoff).changes
-    
-    if (cacheRemoved > 0 || historyRemoved > 0 || stationSearchRemoved > 0) {
-      console.log(`🧹 Cleaned up -> cache: ${cacheRemoved}, history: ${historyRemoved}, station search: ${stationSearchRemoved}`)
-      
-      const cacheCount = (stmtGetCacheCount.get() as { count: number }).count
-      metricsCollector.updateCacheMetrics(0, cacheCount)
-    }
-    
-    // Optimiere Datenbank
-    db.pragma('optimize')
-  } catch (error) {
-    console.error('❌ Error during cache cleanup:', error)
-  }
-}
-
-// Neue Funktion: Bereinige vergangene Fahrten
-function cleanupPastConnections(): void {
-  if (!CLEANUP_PAST_CONNECTIONS) {
+// V2: Helper zum Speichern von Preis-Snapshots (mit extId)
+function savePriceSnapshot(
+  startStationId: string,
+  zielStationId: string,
+  date: string,
+  departureTime: string,
+  arrivalTime: string,
+  transfers: number,
+  info: string,
+  passengerType: string,
+  discountType: string,
+  discountClass: string,
+  travelClass: string,
+  price: number,
+  recordedAt: number
+): void {
+  // Extrahiere extIds (verkürzt!)
+  const startExtId = extractStationExtId(startStationId)
+  const zielExtId = extractStationExtId(zielStationId)
+  
+  // Stelle sicher, dass Stations existieren
+  stmtInsertStation.run(startExtId, recordedAt)
+  stmtInsertStation.run(zielExtId, recordedAt)
+  
+  const startStationRow = stmtGetStationId.get(startExtId) as { id: number } | undefined
+  const zielStationRow = stmtGetStationId.get(zielExtId) as { id: number } | undefined
+  
+  if (!startStationRow || !zielStationRow) {
+    console.warn('⚠️ Could not find station IDs')
     return
   }
   
-  try {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const todayStr = today.toISOString().split('T')[0] // Format: YYYY-MM-DD
-    
-    // Lösche Cache-Einträge mit Datum in der Vergangenheit
-    let cacheRemoved = 0
-    const allCacheKeys = db.prepare('SELECT cache_key FROM connection_cache').all() as Array<{ cache_key: string }>
-    
-    for (const row of allCacheKeys) {
-      try {
-        const parsed = JSON.parse(row.cache_key)
-        if (parsed.date && parsed.date < todayStr) {
-          db.prepare('DELETE FROM connection_cache WHERE cache_key = ?').run(row.cache_key)
-          cacheRemoved++
-        }
-      } catch {
-        // Ignoriere ungültige Cache-Keys
-      }
-    }
-    
-    // Lösche Preishistorie für vergangene Daten
-    const historyRemoved = stmtCleanupPastPriceHistory.run(todayStr).changes
-    
-    if (cacheRemoved > 0 || historyRemoved > 0) {
-      console.log(`🧹 Cleaned up past connections -> cache: ${cacheRemoved}, history: ${historyRemoved}`)
-      
-      const cacheCount = (stmtGetCacheCount.get() as { count: number }).count
-      metricsCollector.updateCacheMetrics(0, cacheCount)
-    }
-    
-    // Optimiere Datenbank nach größerem Cleanup
-    if (cacheRemoved > 100 || historyRemoved > 1000) {
-      db.pragma('optimize')
-      db.pragma('vacuum')
-    }
-  } catch (error) {
-    console.error('❌ Error during past connections cleanup:', error)
-  }
-}
-
-// Cache-Bereinigung alle 6 Stunden
-// Nur in Runtime ausführen, nicht beim Build
-if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production' || typeof window === 'undefined') {
-  const isRuntime = !process.env.NEXT_PHASE || process.env.NEXT_PHASE === 'phase-production-server'
+  const routeHash = generateRouteHash(startStationId, zielStationId, date, departureTime, arrivalTime)
   
-  if (isRuntime) {
-    setInterval(cleanupCache, 6 * 60 * 60 * 1000)
-    
-    // Cleanup vergangener Fahrten einmal täglich (zur Mitternacht + 1 Stunde)
-    const scheduleNextPastConnectionsCleanup = () => {
-      const now = new Date()
-      const tomorrow = new Date(now)
-      tomorrow.setDate(tomorrow.getDate() + 1)
-      tomorrow.setHours(1, 0, 0, 0) // 01:00 Uhr
-      
-      const msUntilNextCleanup = tomorrow.getTime() - now.getTime()
-      
-      setTimeout(() => {
-        cleanupPastConnections()
-        // Plane nächsten Cleanup
-        setInterval(cleanupPastConnections, 24 * 60 * 60 * 1000)
-      }, msUntilNextCleanup)
-      
-      console.log(`⏰ Next past connections cleanup scheduled for ${tomorrow.toISOString()}`)
-    }
-    
-    // Starte initialen Cleanup vergangener Fahrten
-    if (CLEANUP_PAST_CONNECTIONS) {
-      console.log('♻️ Past connections cleanup is ENABLED (set CLEANUP_PAST_CONNECTIONS=false to disable)')
-      scheduleNextPastConnectionsCleanup()
-      // Führe sofort einen Cleanup durch beim Start
-      setTimeout(cleanupPastConnections, 5000)
-    } else {
-      console.log('⚠️ Past connections cleanup is DISABLED')
-    }
+  let connection = stmtGetConnectionByHash.get(routeHash) as { id: number } | undefined
+  
+  if (!connection) {
+    stmtInsertConnection.run(
+      startStationRow.id,
+      zielStationRow.id,
+      date,
+      departureTime,
+      arrivalTime,
+      transfers,
+      routeHash,
+      recordedAt
+    )
+    connection = stmtGetConnectionByHash.get(routeHash) as { id: number }
   }
-}
-
-// Graceful Shutdown
-process.on('SIGINT', () => {
-  db.close()
-  process.exit(0)
-})
-
-process.on('SIGTERM', () => {
-  db.close()
-  process.exit(0)
-})
-
-// Neue Funktion: Hole Preishistorie für einen bestimmten Tag (günstigster Preis pro Abfragezeitpunkt)
-export interface PriceHistoryEntry {
-  preis: number
-  recorded_at: number
+  
+  if (connection) {
+    stmtInsertPriceSnapshot.run(
+      connection.id,
+      passengerType,
+      discountType,
+      discountClass,
+      travelClass,
+      price,
+      recordedAt
+    )
+  }
 }
 
 export function getDayPriceHistory(
@@ -505,36 +692,67 @@ export function getDayPriceHistory(
     ermaessigungKlasse: string
     klasse: string
   },
-  connectionIds?: string[],
-  timeFilters?: {
-    abfahrtAb?: string
-    ankunftBis?: string
-  }
+  connectionIds?: string[]
 ): PriceHistoryEntry[] {
   try {
-    // Wenn keine Connection-IDs übergeben wurden, leere Liste zurückgeben
     if (!connectionIds || connectionIds.length === 0) {
       return []
     }
     
-    // Filtere Connection-IDs VOR dem MIN() Aggregat
-    const placeholders = connectionIds.map(() => '?').join(',')
+    // V2: Konvertiere connection_ids zu route_hashes
+    const routeHashes: string[] = []
+    for (const connId of connectionIds) {
+      const parts = connId.split('-')
+      // Format: startStation-zielStation-departure-arrival-transfers
+      if (parts.length >= 5) {
+        // Rekonstruiere departure und arrival aus den Teilen
+        // parts[0] = startStation, parts[1] = zielStation
+        // Alles zwischen 2 und (length-2) ist departure
+        // parts[length-2] ist arrival (aber Teil davon)
+        // parts[length-1] ist transfers
+        
+        // Besser: Suche nach dem letzten "-" und nimm alles davor für departure/arrival
+        const transfersStr = parts[parts.length - 1]
+        const remainingParts = parts.slice(2, parts.length - 1)
+        
+        // Finde den Punkt wo arrival beginnt (nach dem letzten "T" timestamp)
+        let departureEndIdx = -1
+        for (let i = remainingParts.length - 1; i >= 0; i--) {
+          if (remainingParts[i].includes('T') && i < remainingParts.length - 1) {
+            departureEndIdx = i
+            break
+          }
+        }
+        
+        if (departureEndIdx >= 0) {
+          const departure = remainingParts.slice(0, departureEndIdx + 1).join('-')
+          const arrival = remainingParts.slice(departureEndIdx + 1).join('-')
+          const hash = generateRouteHash(parts[0], parts[1], params.date, departure, arrival)
+          routeHashes.push(hash)
+        }
+      }
+    }
+    
+    if (routeHashes.length === 0) {
+      console.warn('⚠️ Could not convert any connection IDs to route hashes')
+      return []
+    }
+    
+    const placeholders = routeHashes.map(() => '?').join(',')
     const query = `
-      SELECT MIN(filtered.preis) as min_preis, filtered.recorded_at
-      FROM (
-        SELECT preis, recorded_at
-        FROM price_history
-        WHERE start_station_id = ? 
-          AND ziel_station_id = ? 
-          AND date = ? 
-          AND "alter" = ? 
-          AND ermaessigung_art = ? 
-          AND ermaessigung_klasse = ? 
-          AND klasse = ?
-          AND connection_id IN (${placeholders})
-      ) AS filtered
-      GROUP BY filtered.recorded_at
-      ORDER BY filtered.recorded_at ASC
+      SELECT MIN(ps.price) as min_preis, ps.recorded_at
+      FROM price_snapshots ps
+      JOIN connections c ON ps.connection_id = c.id
+      WHERE c.start_station_id = ?
+        AND c.ziel_station_id = ?
+        AND c.date = ?
+        AND ps.passenger_type = ?
+        AND ps.discount_type = ?
+        AND ps.discount_class = ?
+        AND ps.travel_class = ?
+        AND c.route_hash IN (${placeholders})
+      GROUP BY ps.recorded_at
+      ORDER BY ps.recorded_at ASC
     `
     
     const stmt = db.prepare(query)
@@ -546,17 +764,16 @@ export function getDayPriceHistory(
       params.ermaessigungArt,
       params.ermaessigungKlasse,
       params.klasse,
-      ...connectionIds
+      ...routeHashes
     ) as Array<{ min_preis: number; recorded_at: number }>
     
     return rows.map(row => ({ preis: row.min_preis, recorded_at: row.recorded_at }))
   } catch (error) {
-    console.error('❌ Error reading filtered day price history:', error)
+    console.error('❌ Error reading day price history:', error)
     return []
   }
 }
 
-// Neue Funktion: Hole Preishistorie für eine spezifische Verbindung
 export function getConnectionPriceHistory(params: {
   connectionId: string
   alter: string
@@ -565,13 +782,42 @@ export function getConnectionPriceHistory(params: {
   klasse: string
 }): PriceHistoryEntry[] {
   try {
+    const parts = params.connectionId.split('-')
+    if (parts.length < 5) return []
+    
+    const startStation = parts[0]
+    const zielStation = parts[1]
+    const transfersStr = parts[parts.length - 1]
+    const remainingParts = parts.slice(2, parts.length - 1)
+    
+    // Finde den Punkt wo arrival beginnt
+    let departureEndIdx = -1
+    for (let i = remainingParts.length - 1; i >= 0; i--) {
+      if (remainingParts[i].includes('T') && i < remainingParts.length - 1) {
+        departureEndIdx = i
+        break
+      }
+    }
+    
+    if (departureEndIdx < 0) {
+      console.warn('⚠️ Could not parse connection ID:', params.connectionId)
+      return []
+    }
+    
+    const departure = remainingParts.slice(0, departureEndIdx + 1).join('-')
+    const arrival = remainingParts.slice(departureEndIdx + 1).join('-')
+    const date = departure.split('T')[0]
+    
+    const routeHash = generateRouteHash(startStation, zielStation, date, departure, arrival)
+    
     const rows = stmtGetConnectionPriceHistory.all(
-      params.connectionId,
+      routeHash,
       params.alter,
       params.ermaessigungArt,
       params.ermaessigungKlasse,
       params.klasse
     ) as Array<{ preis: number; recorded_at: number }>
+    
     return rows.map(row => ({ preis: row.preis, recorded_at: row.recorded_at }))
   } catch (error) {
     console.error('❌ Error reading connection price history:', error)
@@ -665,7 +911,7 @@ export function setCachedStationSearch(searchTerm: string, results: StationSearc
     const now = Date.now()
     
     for (const result of results) {
-      // Skip stations without extId (required field)
+      // Skip stations ohne extId (erforderliches Feld)
       if (!result.extId || result.extId.trim() === '') {
         console.warn(`⚠️ Skipping station without extId: ${result.name}`)
         continue
@@ -674,7 +920,7 @@ export function setCachedStationSearch(searchTerm: string, results: StationSearc
       stmtInsertStationSearch.run(
         normalizedTerm,
         result.extId,
-        result.id || result.extId, // Fallback to extId if id is missing
+        result.id || result.extId, // Fallback zu extId wenn id fehlt
         result.name,
         result.lat ?? null,
         result.lon ?? null,
@@ -694,4 +940,129 @@ export function getCacheSize(): number {
   } catch {
     return 0
   }
+}
+
+// Cache-Bereinigung
+function cleanupCache(): void {
+  try {
+    const now = Date.now()
+    const cutoffTime = now - DATA_RETENTION_MS
+    const stationSearchCutoff = now - STATION_SEARCH_RETENTION_MS
+    
+    const cacheRemoved = db.prepare('DELETE FROM connection_cache WHERE last_fetched_at < ?').run(cutoffTime).changes
+    const snapshotsRemoved = db.prepare('DELETE FROM price_snapshots WHERE recorded_at < ?').run(cutoffTime).changes
+    const connectionsRemoved = db.prepare('DELETE FROM connections WHERE id NOT IN (SELECT DISTINCT connection_id FROM price_snapshots)').run().changes
+    const stationsRemoved = db.prepare('DELETE FROM stations WHERE id NOT IN (SELECT DISTINCT start_station_id FROM connections UNION SELECT DISTINCT ziel_station_id FROM connections)').run().changes
+    const stationSearchRemoved = db.prepare('DELETE FROM station_search_cache WHERE created_at < ?').run(stationSearchCutoff).changes
+    
+    if (cacheRemoved > 0 || snapshotsRemoved > 0 || connectionsRemoved > 0 || stationsRemoved > 0 || stationSearchRemoved > 0) {
+      console.log(`🧹 Cleaned up -> cache: ${cacheRemoved}, snapshots: ${snapshotsRemoved}, connections: ${connectionsRemoved}, stations: ${stationsRemoved}, station search: ${stationSearchRemoved}`)
+      
+      const cacheCount = (stmtGetCacheCount.get() as { count: number }).count
+      metricsCollector.updateCacheMetrics(0, cacheCount)
+    }
+    
+    db.pragma('optimize')
+  } catch (error) {
+    console.error('❌ Error during cache cleanup:', error)
+  }
+}
+
+// Neue Funktion: Bereinige vergangene Fahrten
+function cleanupPastConnections(): void {
+  if (!CLEANUP_PAST_CONNECTIONS) return
+  
+  try {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const todayStr = today.toISOString().split('T')[0]
+    
+    // Lösche Cache-Einträge mit Datum in der Vergangenheit
+    let cacheRemoved = 0
+    const allCacheKeys = db.prepare('SELECT cache_key FROM connection_cache').all() as Array<{ cache_key: string }>
+    
+    for (const row of allCacheKeys) {
+      try {
+        const parsed = JSON.parse(row.cache_key)
+        if (parsed.date && parsed.date < todayStr) {
+          db.prepare('DELETE FROM connection_cache WHERE cache_key = ?').run(row.cache_key)
+          cacheRemoved++
+        }
+      } catch {
+        // Ignoriere ungültige Cache-Keys
+      }
+    }
+    
+    // Lösche Verbindungen für vergangene Daten (CASCADE löscht automatisch zugehörige Snapshots)
+    const connectionsRemoved = db.prepare('DELETE FROM connections WHERE date < ?').run(todayStr).changes
+    
+    if (cacheRemoved > 0 || connectionsRemoved > 0) {
+      console.log(`🧹 Cleaned up past connections -> cache: ${cacheRemoved}, connections: ${connectionsRemoved}`)
+      
+      const cacheCount = (stmtGetCacheCount.get() as { count: number }).count
+      metricsCollector.updateCacheMetrics(0, cacheCount)
+    }
+    
+    if (cacheRemoved > 100 || connectionsRemoved > 1000) {
+      db.pragma('optimize')
+      db.pragma('vacuum')
+    }
+  } catch (error) {
+    console.error('❌ Error during past connections cleanup:', error)
+  }
+}
+
+// Cache-Bereinigung alle 6 Stunden
+// Nur in Runtime ausführen, nicht beim Build
+if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production' || typeof window === 'undefined') {
+  const isRuntime = !process.env.NEXT_PHASE || process.env.NEXT_PHASE === 'phase-production-server'
+  
+  if (isRuntime) {
+    setInterval(cleanupCache, 6 * 60 * 60 * 1000)
+    
+    // Cleanup vergangener Fahrten einmal täglich (zur Mitternacht + 1 Stunde)
+    const scheduleNextPastConnectionsCleanup = () => {
+      const now = new Date()
+      const tomorrow = new Date(now)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      tomorrow.setHours(1, 0, 0, 0) // 01:00 Uhr
+      
+      const msUntilNextCleanup = tomorrow.getTime() - now.getTime()
+      
+      setTimeout(() => {
+        cleanupPastConnections()
+        // Plane nächsten Cleanup
+        setInterval(cleanupPastConnections, 24 * 60 * 60 * 1000)
+      }, msUntilNextCleanup)
+      
+      console.log(`⏰ Next past connections cleanup scheduled for ${tomorrow.toISOString()}`)
+    }
+    
+    // Starte initialen Cleanup vergangener Fahrten
+    if (CLEANUP_PAST_CONNECTIONS) {
+      console.log('♻️ Past connections cleanup is ENABLED (set CLEANUP_PAST_CONNECTIONS=false to disable)')
+      scheduleNextPastConnectionsCleanup()
+      // Führe sofort einen Cleanup durch beim Start
+      setTimeout(cleanupPastConnections, 5000)
+    } else {
+      console.log('⚠️ Past connections cleanup is DISABLED')
+    }
+  }
+}
+
+// Graceful Shutdown
+process.on('SIGINT', () => {
+  db.close()
+  process.exit(0)
+})
+
+process.on('SIGTERM', () => {
+  db.close()
+  process.exit(0)
+})
+
+// Neue Funktion: Hole Preishistorie für einen bestimmten Tag (günstigster Preis pro Abfragezeitpunkt)
+export interface PriceHistoryEntry {
+  preis: number
+  recorded_at: number
 }
