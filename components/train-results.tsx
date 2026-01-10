@@ -80,6 +80,7 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
   const [abortController, setAbortController] = useState<AbortController | null>(null)
   const calendarRef = useRef<HTMLDivElement>(null)
   const [hasScrolledToCalendar, setHasScrolledToCalendar] = useState(false)
+  const [sessionCompleted, setSessionCompleted] = useState(false)
 
   // Calculate expected days from weekdays
   const expectedDays = (() => {
@@ -166,13 +167,14 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
     // Frontend-State SPÄTER zurücksetzen (damit sessionId noch verfügbar ist)
     setLoading(false)
     setIsStreaming(false)
+    setSessionCompleted(false)
     // sessionId NICHT sofort null setzen - wird durch useEffect cleanup gemacht
   }
 
   // Cleanup bei Component Unmount oder Navigation
   useEffect(() => {
     const handleBeforeUnload = async () => {
-      if (sessionId && isStreaming) {
+      if (sessionId && isStreaming && !sessionCompleted) {
         // Versuche Backend über Seitenabbruch zu informieren
         try {
           await fetch(`/api/search-prices/cancel-search`, {
@@ -187,7 +189,7 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
     }
 
     const handleVisibilityChange = async () => {
-      if (document.hidden && sessionId && isStreaming) {
+      if (document.hidden && sessionId && isStreaming && !sessionCompleted) {
         // Seite ist nicht mehr sichtbar - informiere Backend
         try {
           await fetch(`/api/search-prices/cancel-search`, {
@@ -212,7 +214,7 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
         handleBeforeUnload()
       }
     }
-  }, [sessionId, isStreaming])
+  }, [sessionId, isStreaming, sessionCompleted])
 
   // Create a unique key for the current search to prevent duplicate requests
   const currentSearchKey = JSON.stringify({
@@ -332,6 +334,7 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
                       processedDaysRef.current.add(data.date)
                       if (expectedDays && processedDaysRef.current.size >= expectedDays) {
                         setIsStreaming(false)
+                        setSessionCompleted(true)
                         setTimeout(() => setSessionId(null), 500)
                       }
                     } else if (data.type === 'complete') {
@@ -339,6 +342,7 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
                       setPriceResults(data.results)
                       setLoading(false)
                       setIsStreaming(false)
+                      setSessionCompleted(true)
                       setSessionId(null)
                       return
                     }
@@ -351,6 +355,7 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
             // Set status to completed after streaming ends
             setLoading(false)
             setIsStreaming(false)
+            setSessionCompleted(true)
           } finally {
             reader.releaseLock()
           }
@@ -360,6 +365,7 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
             try {
               const finalData = JSON.parse(buffer)
               setPriceResults(finalData)
+              setSessionCompleted(true)
             } catch (e) {
               console.warn("Could not parse final buffer:", buffer)
             }
@@ -368,6 +374,7 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
           // Fallback für non-streaming response
           const data = await response.json()
           setPriceResults(data)
+          setSessionCompleted(true)
         }
         
         // Cleanup nach 1 Sekunde um sicherzustellen dass alle Backend-Operationen abgeschlossen sind

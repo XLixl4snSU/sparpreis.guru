@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     // Check cache first
     const cachedResults = getCachedStationSearch(normalizedQuery)
     if (cachedResults) {
-      console.log(`🚉 Station search cache hit for: "${normalizedQuery}"`)
+      console.log(`🚉 Station search cache hit for "${cachedResults[0]?.name}" (${normalizedQuery})`)
       return NextResponse.json({ results: cachedResults, cached: true })
     }
     
