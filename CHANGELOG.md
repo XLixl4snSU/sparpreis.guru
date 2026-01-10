@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.4](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.0.3...v1.0.4) (2026-01-10)
+
+
+### Bug Fixes
+
+* session completion ([f66df53](https://github.com/XLixl4snSU/sparpreis.guru/commit/f66df53c539a2468dee53253dfff866346b2108a))
+* time filter and connection ID logic ([#22](https://github.com/XLixl4snSU/sparpreis.guru/issues/22)) ([cc3a1a9](https://github.com/XLixl4snSU/sparpreis.guru/commit/cc3a1a94edd22121edc62d7311dd306f84c98bda))
+
 ## [1.0.3](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.0.2...v1.0.3) (2026-01-06)
 
 
