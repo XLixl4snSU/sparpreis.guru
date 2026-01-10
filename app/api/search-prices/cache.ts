@@ -590,7 +590,6 @@ export function getCachedStation(search: string): { id: string; normalizedId: st
   }
   
   const station = results[0]
-  console.log(`🚉 Station cache hit for: ${search}`)
   metricsCollector.recordCacheHit('station')
   
   // Normalisiere die Station-ID: Entferne den Timestamp-Parameter @p=

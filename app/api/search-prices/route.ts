@@ -82,8 +82,20 @@ export async function POST(request: NextRequest) {
     metricsCollector.recordStreamingConnection()
 
     console.log("\n🚂 Starting bestpreissuche request")
+    // Search for stations
+    const startStation = await searchBahnhof(start)
+    const zielStation = await searchBahnhof(ziel)
+        if (!startStation || !zielStation) {
+      return NextResponse.json(
+        {
+          error: `Station not found. Start: ${startStation ? "✓" : "✗"}, Ziel: ${zielStation ? "✓" : "✗"}`,
+        },
+        { status: 404 },
+      )
+    }
     console.log("📋 Request parameters:")
-    console.log("  - Route:", start, "→", ziel)
+    console.log(`  - Startbahnhof: ${startStation.name} (ID: ${startStation.normalizedId})`)
+    console.log(`  - Zielbahnhof: ${zielStation.name} (ID: ${zielStation.normalizedId})`)
     console.log("  - Weekdays:", wochentage)
     console.log("  - Days:", calculatedDates.length, "| Time:", abfahrtAb || "any", "-", ankunftBis || "any")
     console.log("  - Class:", klasse, "| Max transfers:", maximaleUmstiege, "(type:", typeof maximaleUmstiege, ")")
@@ -99,20 +111,6 @@ export async function POST(request: NextRequest) {
     // Verwende die übergebene sessionId oder generiere eine neue
     const sessionId = providedSessionId || crypto.randomUUID()
     console.log(`📱 Session ID: ${sessionId}`)
-
-    // Search for stations
-    console.log("\n📍 Searching for stations...")
-    const startStation = await searchBahnhof(start)
-    const zielStation = await searchBahnhof(ziel)
-        
-    if (!startStation || !zielStation) {
-      return NextResponse.json(
-        {
-          error: `Station not found. Start: ${startStation ? "✓" : "✗"}, Ziel: ${zielStation ? "✓" : "✗"}`,
-        },
-        { status: 404 },
-      )
-    }
 
     // Streaming Response Setup
     const encoder = new TextEncoder()

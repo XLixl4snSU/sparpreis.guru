@@ -76,7 +76,7 @@ class MetricsCollector {
       this.labels.set(name, { ...this.labels.get(name), ...labels })
     }
     
-    console.log(`📊 Metric: ${name} = ${current + value}${labels ? ` (${JSON.stringify(labels)})` : ''}`)
+    // console.log(`📊 Metric: ${name} = ${current + value}${labels ? ` (${JSON.stringify(labels)})` : ''}`) // Only for Debugging purposes
   }
 
   // Gauge methods
