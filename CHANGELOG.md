@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.5](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.0.4...v1.0.5) (2026-01-29)
+
+
+### Bug Fixes
+
+* next CVE ([0fb751e](https://github.com/XLixl4snSU/sparpreis.guru/commit/0fb751e3bc2a94485722374b36ebc19140da0308))
+
 ## [1.0.4](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.0.3...v1.0.4) (2026-01-10)
 
 
