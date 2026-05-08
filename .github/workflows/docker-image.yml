@@ -26,11 +26,13 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.13.0
 
       # 2) pnpm + Cache (falls du außerhalb von Docker installierst)
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.0.8 --activate
 
       - name: Get pnpm store directory
         id: pnpm-cache
@@ -119,10 +121,12 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.13.0
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.0.8 --activate
 
       - name: Get pnpm store directory
         id: pnpm-cache
