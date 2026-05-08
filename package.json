@@ -2,7 +2,7 @@
   "name": "sparpreis.guru",
   "version": "1.1.0",
   "private": true,
-  "packageManager": "pnpm@10.14.0",
+  "packageManager": "pnpm@11.0.8",
   "scripts": {
     "build": "next build",
     "build:direct-connections": "python scripts/build-direct-connections.py",
