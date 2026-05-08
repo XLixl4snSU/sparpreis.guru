@@ -30,9 +30,7 @@ jobs:
 
       # 2) pnpm + Cache (falls du außerhalb von Docker installierst)
       - name: Set up pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@11.0.8 --activate
+        run: npm install --global pnpm@11.0.8
 
       - name: Get pnpm store directory
         id: pnpm-cache
@@ -124,9 +122,7 @@ jobs:
           node-version: 22.13.0
 
       - name: Set up pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@11.0.8 --activate
+        run: npm install --global pnpm@11.0.8
 
       - name: Get pnpm store directory
         id: pnpm-cache
