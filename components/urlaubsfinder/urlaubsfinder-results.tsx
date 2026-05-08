@@ -498,9 +498,10 @@ export function UrlauberfinderResults({
     results.length > 0
       ? results.reduce((sum, r) => sum + r.totalPrice, 0) / results.length
       : 0
-  const progressPercent = progress
-    ? Math.round((progress.processed / progress.total) * 100)
-    : 0
+  const progressPercent =
+    progress && progress.total > 0
+      ? Math.round((progress.processed / progress.total) * 100)
+      : 0
   const hasResults = results.length > 0
   const hasUnavailable = unavailableResults.length > 0
   const hasMapData = results.some((r) => r.lat && r.lon)

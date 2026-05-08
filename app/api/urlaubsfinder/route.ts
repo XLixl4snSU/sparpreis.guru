@@ -260,9 +260,10 @@ export async function POST(request: NextRequest) {
           const [destName, destData] = destinationEntries[i]
           const destinationDisplayName = destData.displayName
 
-          // Send progress update for the currently processed destination
+          // Send progress update for the currently processed destination.
+          // processed counts finished destinations, so the first destination starts at 0.
           const progress = {
-            processed: i + 1,
+            processed: i,
             total: totalDestinations,
             destination: destinationDisplayName,
           }
@@ -438,6 +439,19 @@ export async function POST(request: NextRequest) {
               encoder.encode(`data: ${JSON.stringify({ 
                 type: 'error', 
                 message: `Error searching ${destName}` 
+              })}\n\n`)
+            )
+          }
+
+          if (!request.signal.aborted) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({
+                type: 'progress',
+                data: {
+                  processed: i + 1,
+                  total: totalDestinations,
+                  destination: destinationDisplayName,
+                },
               })}\n\n`)
             )
           }
