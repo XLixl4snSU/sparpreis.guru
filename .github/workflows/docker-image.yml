@@ -30,11 +30,16 @@ jobs:
 
       # 2) pnpm + Cache (falls du außerhalb von Docker installierst)
       - name: Set up pnpm
-        run: corepack enable
+        run: |
+          corepack enable
+          corepack install
 
       - name: Get pnpm store directory
         id: pnpm-cache
-        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+        run: |
+          STORE_PATH="$(pnpm store path --silent)"
+          test -n "$STORE_PATH"
+          echo "STORE_PATH=$STORE_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm
         uses: actions/cache@v4
@@ -122,11 +127,16 @@ jobs:
           node-version: 22.13.0
 
       - name: Set up pnpm
-        run: corepack enable
+        run: |
+          corepack enable
+          corepack install
 
       - name: Get pnpm store directory
         id: pnpm-cache
-        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+        run: |
+          STORE_PATH="$(pnpm store path --silent)"
+          test -n "$STORE_PATH"
+          echo "STORE_PATH=$STORE_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm
         uses: actions/cache@v4
