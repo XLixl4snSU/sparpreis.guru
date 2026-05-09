@@ -23,35 +23,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22.13.0
-
-      # 2) pnpm + Cache (falls du außerhalb von Docker installierst)
-      - name: Set up pnpm
-        run: |
-          corepack enable
-          corepack install
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        run: |
-          STORE_PATH="$(pnpm store path --silent)"
-          test -n "$STORE_PATH"
-          echo "STORE_PATH=$STORE_PATH" >> "$GITHUB_OUTPUT"
-
-      - name: Cache pnpm
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
       # Setze Version in package.json aus dem Tag (z.B. v1.2.3 -> 1.2.3)
       - name: Set package.json version from tag
         if: startsWith(github.ref, 'refs/tags/v')
@@ -120,34 +91,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22.13.0
-
-      - name: Set up pnpm
-        run: |
-          corepack enable
-          corepack install
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        run: |
-          STORE_PATH="$(pnpm store path --silent)"
-          test -n "$STORE_PATH"
-          echo "STORE_PATH=$STORE_PATH" >> "$GITHUB_OUTPUT"
-
-      - name: Cache pnpm
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
 
       # Setze Version in package.json auf "dev"
       - name: Set package.json version to dev
