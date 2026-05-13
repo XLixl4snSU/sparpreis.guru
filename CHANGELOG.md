@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.1.1...v1.1.2) (2026-05-13)
+
+
+### Bug Fixes
+
+* **deps:** bump next from 16.2.5 to 16.2.6 for security reasons ([43b17e3](https://github.com/XLixl4snSU/sparpreis.guru/commit/43b17e3ad968d5bfbfc10d14d8ea6439e073233a))
+
 ## [1.1.1](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.1.0...v1.1.1) (2026-05-07)
 
 
