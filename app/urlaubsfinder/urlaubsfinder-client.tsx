@@ -71,8 +71,12 @@ function buildUrlaubsfinderQuery(params: UrlauberfinderSearchParams): string {
   }
   if (params.maximaleUmstiege) query.set('maximaleUmstiege', params.maximaleUmstiege)
   if (params.outwardAbfahrtAb) query.set('outwardAbfahrtAb', params.outwardAbfahrtAb)
+  if (params.outwardAbfahrtBis) query.set('outwardAbfahrtBis', params.outwardAbfahrtBis)
+  if (params.outwardAnkunftAb) query.set('outwardAnkunftAb', params.outwardAnkunftAb)
   if (params.outwardAnkunftBis) query.set('outwardAnkunftBis', params.outwardAnkunftBis)
   if (params.returnAbfahrtAb) query.set('returnAbfahrtAb', params.returnAbfahrtAb)
+  if (params.returnAbfahrtBis) query.set('returnAbfahrtBis', params.returnAbfahrtBis)
+  if (params.returnAnkunftAb) query.set('returnAnkunftAb', params.returnAnkunftAb)
   if (params.returnAnkunftBis) query.set('returnAnkunftBis', params.returnAnkunftBis)
   if (params.umstiegszeit) query.set('umstiegszeit', params.umstiegszeit)
 
@@ -120,11 +124,23 @@ function parseUrlaubsfinderQuery(searchParams: QueryLike): Partial<Urlauberfinde
   const outwardAbfahrtAb = searchParams.get('outwardAbfahrtAb')?.trim()
   if (outwardAbfahrtAb) parsed.outwardAbfahrtAb = outwardAbfahrtAb
 
+  const outwardAbfahrtBis = searchParams.get('outwardAbfahrtBis')?.trim()
+  if (outwardAbfahrtBis) parsed.outwardAbfahrtBis = outwardAbfahrtBis
+
+  const outwardAnkunftAb = searchParams.get('outwardAnkunftAb')?.trim()
+  if (outwardAnkunftAb) parsed.outwardAnkunftAb = outwardAnkunftAb
+
   const outwardAnkunftBis = searchParams.get('outwardAnkunftBis')?.trim()
   if (outwardAnkunftBis) parsed.outwardAnkunftBis = outwardAnkunftBis
 
   const returnAbfahrtAb = searchParams.get('returnAbfahrtAb')?.trim()
   if (returnAbfahrtAb) parsed.returnAbfahrtAb = returnAbfahrtAb
+
+  const returnAbfahrtBis = searchParams.get('returnAbfahrtBis')?.trim()
+  if (returnAbfahrtBis) parsed.returnAbfahrtBis = returnAbfahrtBis
+
+  const returnAnkunftAb = searchParams.get('returnAnkunftAb')?.trim()
+  if (returnAnkunftAb) parsed.returnAnkunftAb = returnAnkunftAb
 
   const returnAnkunftBis = searchParams.get('returnAnkunftBis')?.trim()
   if (returnAnkunftBis) parsed.returnAnkunftBis = returnAnkunftBis

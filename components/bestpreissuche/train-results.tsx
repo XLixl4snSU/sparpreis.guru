@@ -20,6 +20,8 @@ interface SearchParams {
   nurDeutschlandTicketVerbindungen?: string
   maximaleUmstiege?: string
   abfahrtAb?: string
+  abfahrtBis?: string
+  ankunftAb?: string
   ankunftBis?: string
   wochentage?: string // Only weekdays
   umstiegszeit?: string
@@ -64,6 +66,8 @@ interface MetaData {
     schnelleVerbindungen?: string | boolean
     nurDeutschlandTicketVerbindungen?: string | boolean
     abfahrtAb?: string
+    abfahrtBis?: string
+    ankunftAb?: string
     ankunftBis?: string
     umstiegszeit?: string
   }
@@ -242,6 +246,8 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
     nurDeutschlandTicketVerbindungen: searchParams.nurDeutschlandTicketVerbindungen,
     maximaleUmstiege: searchParams.maximaleUmstiege,
     abfahrtAb: searchParams.abfahrtAb,
+    abfahrtBis: searchParams.abfahrtBis,
+    ankunftAb: searchParams.ankunftAb,
     ankunftBis: searchParams.ankunftBis,
     wochentage: searchParams.wochentage, // Changed from 'tage'
     umstiegszeit: searchParams.umstiegszeit,
@@ -305,6 +311,8 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
             nurDeutschlandTicketVerbindungen: searchParams.nurDeutschlandTicketVerbindungen === "1",
             ...(searchParams.maximaleUmstiege !== undefined && searchParams.maximaleUmstiege !== "" && { maximaleUmstiege: Number.parseInt(searchParams.maximaleUmstiege) }),
             abfahrtAb: searchParams.abfahrtAb,
+            abfahrtBis: searchParams.abfahrtBis,
+            ankunftAb: searchParams.ankunftAb,
             ankunftBis: searchParams.ankunftBis,
             umstiegszeit: searchParams.umstiegszeit,
           }),
@@ -434,6 +442,8 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
     searchParams.ermaessigungArt,
     searchParams.ermaessigungKlasse,
     searchParams.abfahrtAb,
+    searchParams.abfahrtBis,
+    searchParams.ankunftAb,
     searchParams.ankunftBis,
     searchParams.wochentage, // Changed from 'tage'
     searchParams.umstiegszeit,
@@ -494,8 +504,8 @@ export function TrainResults({ searchParams }: TrainResultsProps) {
   if (!loading && !isStreaming && prices.length === 0) {
     return (
         <div className="text-center py-8">
-          <p className="text-orange-600 font-medium">Keine Preise verfügbar</p>
-          <p className="text-gray-600 text-sm mt-2">Für den gewählten Zeitraum sind keine Bestpreise verfügbar.</p>
+          <p className="text-orange-600 font-medium">Keine Preise gefunden</p>
+          <p className="text-gray-600 text-sm mt-2">Für den gewählten Zeitraum sind keine Bestpreise verfügbar. Bitte prüfe insbesondere gesetzte Filter auf Widersprüche.</p>
         </div>
     )
   }

@@ -68,6 +68,8 @@ interface SearchParams {
   nurDeutschlandTicketVerbindungen?: string
   maximaleUmstiege?: string
   abfahrtAb?: string
+  abfahrtBis?: string
+  ankunftAb?: string
   ankunftBis?: string
   wochentage?: string // Only weekdays, not individual dates
   umstiegszeit?: string
@@ -150,6 +152,8 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
     searchParams.schnelleVerbindungen === undefined || searchParams.schnelleVerbindungen === "1"
   )
   const [abfahrtAb, setAbfahrtAb] = useState(searchParams.abfahrtAb || "")
+  const [abfahrtBis, setAbfahrtBis] = useState(searchParams.abfahrtBis || "")
+  const [ankunftAb, setAnkunftAb] = useState(searchParams.ankunftAb || "")
   const [ankunftBis, setAnkunftBis] = useState(searchParams.ankunftBis || "")
   
   const [umstiegsOption, setUmstiegsOption] = useState<string>(() => {
@@ -454,6 +458,8 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
     params.set("klasse", klasse)
     if (schnelleVerbindungen) params.set("schnelleVerbindungen", "1")
     if (abfahrtAb) params.set("abfahrtAb", abfahrtAb)
+    if (abfahrtBis) params.set("abfahrtBis", abfahrtBis)
+    if (ankunftAb) params.set("ankunftAb", ankunftAb)
     if (ankunftBis) params.set("ankunftBis", ankunftBis)
     if (umstiegszeit && umstiegszeit !== "normal") {
       params.set("umstiegszeit", umstiegszeit)
@@ -500,6 +506,8 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
     setSchnelleVerbindungen(true)
     setUmstiegsOption("alle")
     setAbfahrtAb("")
+    setAbfahrtBis("")
+    setAnkunftAb("")
     setAnkunftBis("")
     setUmstiegszeit("normal")
     setSelectedWeekdays([1,2,3,4,5,6,0])
@@ -681,51 +689,123 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
               </div>
             </div>
             {/* Zeitfilter - Optional */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="min-w-0">
-                <Label htmlFor="abfahrtAb" className="text-xs font-medium text-gray-600 mb-1 block">Abfahrt ab</Label>
-                <div className="relative">
-                  <Input 
-                    id="abfahrtAb" 
-                    type="time" 
-                    value={abfahrtAb} 
-                    onChange={(e) => setAbfahrtAb(e.target.value)} 
-                    className={dateTimeCtrl}
-                  />
-                  {abfahrtAb && (
-                    <button
-                      type="button"
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-                      onClick={() => setAbfahrtAb("")}
-                      tabIndex={-1}
-                      aria-label="Abfahrt ab zurücksetzen"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="min-w-0 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                <div className="text-sm font-medium text-gray-600 mb-2 block">
+                  <span className="inline-flex items-center gap-1">
+                    <Clock className="w-4 h-4 text-blue-500" />
+                    Abfahrt (optional)
+                  </span>
+                </div>
+                <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                  <div className="min-w-0">
+                    <Label htmlFor="abfahrtAb" className="mb-1 block text-xs font-medium text-gray-600">frühestens</Label>
+                    <div className="relative">
+                      <Input 
+                        id="abfahrtAb" 
+                        type="time" 
+                        value={abfahrtAb} 
+                        onChange={(e) => setAbfahrtAb(e.target.value)} 
+                        className={dateTimeCtrl}
+                        aria-label="Abfahrt frühestens"
+                      />
+                      {abfahrtAb && (
+                        <button
+                          type="button"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                          onClick={() => setAbfahrtAb("")}
+                          tabIndex={-1}
+                          aria-label="Abfahrt ab zurücksetzen"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <span className="mt-6 text-sm font-medium text-gray-500">-</span>
+                  <div className="min-w-0">
+                    <Label htmlFor="abfahrtBis" className="mb-1 block text-xs font-medium text-gray-600">spätestens</Label>
+                    <div className="relative">
+                      <Input 
+                        id="abfahrtBis" 
+                        type="time" 
+                        value={abfahrtBis} 
+                        onChange={(e) => setAbfahrtBis(e.target.value)} 
+                        className={dateTimeCtrl}
+                        aria-label="Abfahrt spätestens"
+                      />
+                      {abfahrtBis && (
+                        <button
+                          type="button"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                          onClick={() => setAbfahrtBis("")}
+                          tabIndex={-1}
+                          aria-label="Abfahrt bis zurücksetzen"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="min-w-0">
-                <Label htmlFor="ankunftBis" className="text-xs font-medium text-gray-600 mb-1 block">Ankunft bis</Label>
-                <div className="relative">
-                  <Input 
-                    id="ankunftBis" 
-                    type="time" 
-                    value={ankunftBis} 
-                    onChange={(e) => setAnkunftBis(e.target.value)} 
-                    className={dateTimeCtrl}
-                  />
-                  {ankunftBis && (
-                    <button
-                      type="button"
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-                      onClick={() => setAnkunftBis("")}
-                      tabIndex={-1}
-                      aria-label="Ankunft bis zurücksetzen"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+              <div className="min-w-0 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                <div className="text-sm font-medium text-gray-600 mb-2 block">
+                  <span className="inline-flex items-center gap-1">
+                    <Clock className="w-4 h-4 text-blue-500" />
+                    Ankunft (optional)
+                  </span>
+                </div>
+                <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                  <div className="min-w-0">
+                    <Label htmlFor="ankunftAb" className="mb-1 block text-xs font-medium text-gray-600">frühestens</Label>
+                    <div className="relative">
+                      <Input 
+                        id="ankunftAb" 
+                        type="time" 
+                        value={ankunftAb} 
+                        onChange={(e) => setAnkunftAb(e.target.value)} 
+                        className={dateTimeCtrl}
+                        aria-label="Ankunft frühestens"
+                      />
+                      {ankunftAb && (
+                        <button
+                          type="button"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                          onClick={() => setAnkunftAb("")}
+                          tabIndex={-1}
+                          aria-label="Ankunft ab zurücksetzen"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <span className="mt-6 text-sm font-medium text-gray-500">-</span>
+                  <div className="min-w-0">
+                    <Label htmlFor="ankunftBis" className="mb-1 block text-xs font-medium text-gray-600">spätestens</Label>
+                    <div className="relative">
+                      <Input 
+                        id="ankunftBis" 
+                        type="time" 
+                        value={ankunftBis} 
+                        onChange={(e) => setAnkunftBis(e.target.value)} 
+                        className={dateTimeCtrl}
+                        aria-label="Ankunft spätestens"
+                      />
+                      {ankunftBis && (
+                        <button
+                          type="button"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                          onClick={() => setAnkunftBis("")}
+                          tabIndex={-1}
+                          aria-label="Ankunft bis zurücksetzen"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

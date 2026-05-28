@@ -19,7 +19,7 @@ const bestpreissucheFaqs: FAQItem[] = [
   },
   {
     question: "Welche Filter werden berücksichtigt?",
-    answer: "Berücksichtigt werden Reisezeitraum, Wochentage, Abfahrt-ab, Ankunft-bis, Alter, BahnCard-Ermäßigung, Reiseklasse, schnelle Verbindungen, Direktverbindungen, maximale Umstiege und eine Mindest-Umstiegszeit. Je enger die Filter sind, desto weniger Verbindungen können gefunden werden."
+    answer: "Berücksichtigt werden Reisezeitraum, Wochentage, Abfahrt-ab/bis, Ankunft-ab/bis, Alter, BahnCard-Ermäßigung, Reiseklasse, schnelle Verbindungen, Direktverbindungen, maximale Umstiege und eine Mindest-Umstiegszeit. Je enger die Filter sind, desto weniger Verbindungen können gefunden werden."
   },
   {
     question: "Was bedeuten Kalender und Tagesdetails?",
@@ -66,7 +66,7 @@ const urlaubsfinderFaqs: FAQItem[] = [
     },
     {
       question: "Welche Filter werden berücksichtigt?",
-      answer: "Berücksichtigt werden Startbahnhof, ausgewählte Ziele, Hinreisedatum, optionales Rückreisedatum, Zeitfenster für Hin- und Rückfahrt, Alter, BahnCard-Ermäßigung, Reiseklasse, schnelle Verbindungen, Direktverbindungen, maximale Umstiege und Mindest-Umstiegszeit."
+      answer: "Berücksichtigt werden Startbahnhof, ausgewählte Ziele, Hinreisedatum, optionales Rückreisedatum, Abfahrts- und Ankunftszeitfenster für Hin- und Rückfahrt, Alter, BahnCard-Ermäßigung, Reiseklasse, schnelle Verbindungen, Direktverbindungen, maximale Umstiege und Mindest-Umstiegszeit."
     },
     {
       question: "Was zeigen Karte und Details?",
