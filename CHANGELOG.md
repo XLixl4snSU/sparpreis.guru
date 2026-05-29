@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.2](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.1.1...v1.1.2) (2026-05-13)
+
+
+### Bug Fixes
+
+* **deps:** bump next from 16.2.5 to 16.2.6 for security reasons ([43b17e3](https://github.com/XLixl4snSU/sparpreis.guru/commit/43b17e3ad968d5bfbfc10d14d8ea6439e073233a))
+
+## [1.1.1](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.1.0...v1.1.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* Overflowing Train Timeline in Urlaubsfinder ([392c37d](https://github.com/XLixl4snSU/sparpreis.guru/commit/392c37d6b72390aa8d3e4e28f1d965bec8a91191))
+* Remove package-lock and update CI setup ([8af914d](https://github.com/XLixl4snSU/sparpreis.guru/commit/8af914da625aef330591f17bb34e5c0358efd4df))
+
 ## [1.1.0](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.0.6...v1.1.0) (2026-05-06)
 
 
