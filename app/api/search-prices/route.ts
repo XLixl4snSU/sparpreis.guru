@@ -12,9 +12,9 @@ export const dynamic = 'force-dynamic';
 
 const LOG_SCOPE = "bestpreissuche.request"
 
-function formatTimeWindow(abfahrtAb?: string, ankunftBis?: string): string {
-  if (!abfahrtAb && !ankunftBis) return "beliebig"
-  return `${abfahrtAb || "beliebig"}-${ankunftBis || "beliebig"}`
+function formatTimeWindow(abfahrtAb?: string, abfahrtBis?: string, ankunftAb?: string, ankunftBis?: string): string {
+  if (!abfahrtAb && !abfahrtBis && !ankunftAb && !ankunftBis) return "beliebig"
+  return `Abfahrt ${abfahrtAb || "beliebig"}-${abfahrtBis || "beliebig"}, Ankunft ${ankunftAb || "beliebig"}-${ankunftBis || "beliebig"}`
 }
 
 interface TrainResult {
@@ -76,6 +76,8 @@ export async function POST(request: NextRequest) {
       nurDeutschlandTicketVerbindungen,
       maximaleUmstiege,
       abfahrtAb,
+      abfahrtBis,
+      ankunftAb,
       ankunftBis,
       umstiegszeit,
     } = body
@@ -98,7 +100,7 @@ export async function POST(request: NextRequest) {
       toDate: reisezeitraumBis,
       plannedDays: calculatedDates.length,
       weekdays: wochentage,
-      timeWindow: formatTimeWindow(abfahrtAb, ankunftBis),
+      timeWindow: formatTimeWindow(abfahrtAb, abfahrtBis, ankunftAb, ankunftBis),
       maxTransfers: maximaleUmstiege ?? "alle",
       travelClass: klasse,
     })
@@ -125,7 +127,7 @@ export async function POST(request: NextRequest) {
       fromDate: reisezeitraumAb,
       toDate: reisezeitraumBis,
       plannedDays: calculatedDates.length,
-      timeWindow: formatTimeWindow(abfahrtAb, ankunftBis),
+      timeWindow: formatTimeWindow(abfahrtAb, abfahrtBis, ankunftAb, ankunftBis),
       maxTransfers: maximaleUmstiege ?? "alle",
       travelClass: klasse || "KLASSE_2",
       transferTimeMinutes: umstiegszeit && umstiegszeit !== "normal" ? umstiegszeit : undefined,
@@ -307,6 +309,8 @@ export async function POST(request: NextRequest) {
               schnelleVerbindungen,
               nurDeutschlandTicketVerbindungen,
               abfahrtAb,
+              abfahrtBis,
+              ankunftAb,
               ankunftBis,
               umstiegszeit,
             },
@@ -369,6 +373,8 @@ export async function POST(request: NextRequest) {
               nurDeutschlandTicketVerbindungen:
                 nurDeutschlandTicketVerbindungen === true || nurDeutschlandTicketVerbindungen === "1",
               abfahrtAb,
+              abfahrtBis,
+              ankunftAb,
               ankunftBis,
               umstiegszeit,
             })
@@ -390,13 +396,18 @@ export async function POST(request: NextRequest) {
             }
 
             // Zeitfilter für Abfahrt/Ankunft anwenden (vereinheitlicht)
-            if ((abfahrtAb || ankunftBis) && dayResponse.result) {
+            if ((abfahrtAb || abfahrtBis || ankunftAb || ankunftBis) && dayResponse.result) {
               for (const dateKey of Object.keys(dayResponse.result)) {
                 const priceData = dayResponse.result[dateKey]
                 if (priceData && priceData.allIntervals && Array.isArray(priceData.allIntervals)) {
                   
                   const filteredIntervals = priceData.allIntervals.filter(interval => 
-                    passesTimeFilter(interval.abfahrtsZeitpunkt, interval.ankunftsZeitpunkt, { abfahrtAb, ankunftBis })
+                    passesTimeFilter(interval.abfahrtsZeitpunkt, interval.ankunftsZeitpunkt, {
+                      abfahrtAb,
+                      abfahrtBis,
+                      ankunftAb,
+                      ankunftBis,
+                    })
                   )
 
                   // WICHTIG: Aktualisiere allIntervals VOR der Bestpreis-Berechnung
@@ -406,7 +417,7 @@ export async function POST(request: NextRequest) {
                     sessionId,
                     travelDate: dateKey,
                     afterTimeFilter: priceData.allIntervals.length,
-                    timeWindow: formatTimeWindow(abfahrtAb, ankunftBis),
+                    timeWindow: formatTimeWindow(abfahrtAb, abfahrtBis, ankunftAb, ankunftBis),
                   })
                   
                   if (filteredIntervals.length === 0) {
@@ -454,7 +465,7 @@ export async function POST(request: NextRequest) {
                 if (priceData && priceData.allIntervals && Array.isArray(priceData.allIntervals)) {
                   
                   // Falls noch kein spezifischer Bestpreis gesetzt wurde
-                  if (!abfahrtAb && !ankunftBis && priceData.allIntervals.length > 1) {
+                  if (!abfahrtAb && !abfahrtBis && !ankunftAb && !ankunftBis && priceData.allIntervals.length > 1) {
                     const recommendedTrip = recommendBestPrice(priceData.allIntervals)
                     if (recommendedTrip) {
                       priceData.preis = recommendedTrip.preis

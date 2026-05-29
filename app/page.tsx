@@ -15,6 +15,8 @@ interface SearchParams {
   ermaessigungArt?: string
   ermaessigungKlasse?: string
   abfahrtAb?: string
+  abfahrtBis?: string
+  ankunftAb?: string
   ankunftBis?: string
   klasse?: string
   schnelleVerbindungen?: string

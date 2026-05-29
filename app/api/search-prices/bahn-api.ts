@@ -15,9 +15,9 @@ import { formatDateKey, generateConnectionId, passesTimeFilter } from './utils';
 
 const LOG_SCOPE = "bestpreissuche.bahn"
 
-function formatTimeWindow(abfahrtAb?: string, ankunftBis?: string): string {
-  if (!abfahrtAb && !ankunftBis) return "beliebig"
-  return `${abfahrtAb || "beliebig"}-${ankunftBis || "beliebig"}`
+function formatTimeWindow(abfahrtAb?: string, abfahrtBis?: string, ankunftAb?: string, ankunftBis?: string): string {
+  if (!abfahrtAb && !abfahrtBis && !ankunftAb && !ankunftBis) return "beliebig"
+  return `Abfahrt ${abfahrtAb || "beliebig"}-${abfahrtBis || "beliebig"}, Ankunft ${ankunftAb || "beliebig"}-${ankunftBis || "beliebig"}`
 }
 
 function formatMaxTransfers(value: unknown): string {
@@ -32,7 +32,7 @@ function routeContext(config: any, travelDate: string) {
     travelDate,
     startStationId: config.startStationNormalizedId,
     destinationStationId: config.zielStationNormalizedId,
-    timeWindow: formatTimeWindow(config.abfahrtAb, config.ankunftBis),
+    timeWindow: formatTimeWindow(config.abfahrtAb, config.abfahrtBis, config.ankunftAb, config.ankunftBis),
     maxTransfers: formatMaxTransfers(config.maximaleUmstiege),
   }
 }
@@ -220,69 +220,12 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
     if (cachedData && cachedData.allIntervals && hasUsableIntervalTimes(cachedData)) {
       // Zeitfilterung auf gecachte Daten anwenden - KORRIGIERT mit Datum-Check!
       const filteredIntervals = cachedData.allIntervals.filter((interval: any) => {
-        if (!config.abfahrtAb && !config.ankunftBis) return true
-        
-        const depDate = new Date(interval.abfahrtsZeitpunkt)
-        const arrDate = new Date(interval.ankunftsZeitpunkt)
-        const depMinutes = depDate.getHours() * 60 + depDate.getMinutes()
-        const arrMinutes = arrDate.getHours() * 60 + arrDate.getMinutes()
-        
-        // Parse Filterzeiten
-        const abfahrtAbMinutes = config.abfahrtAb ? (() => { const [h, m] = config.abfahrtAb.split(":").map(Number); return h * 60 + (m || 0) })() : null
-        const ankunftBisMinutes = config.ankunftBis ? (() => { const [h, m] = config.ankunftBis.split(":").map(Number); return h * 60 + (m || 0) })() : null
-
-        // Helper: Check if dates are same day
-        const isSameDay = (date1: Date, date2: Date) => (
-          date1.getFullYear() === date2.getFullYear() &&
-          date1.getMonth() === date2.getMonth() &&
-          date1.getDate() === date2.getDate()
-        )
-
-        // Helper: Check if arrival is next day
-        const isNextDay = (depDate: Date, arrDate: Date) => {
-          const nextDay = new Date(depDate)
-          nextDay.setDate(depDate.getDate() + 1)
-          return isSameDay(arrDate, nextDay)
-        }
-
-        // Beide Filter gesetzt
-        if (abfahrtAbMinutes !== null && ankunftBisMinutes !== null) {
-          if (abfahrtAbMinutes < ankunftBisMinutes) {
-            // Zeitfenster innerhalb eines Tages (z.B. 05:00–20:00 Uhr): Nur Tagesverbindungen
-            return isSameDay(depDate, arrDate) && 
-                   depMinutes >= abfahrtAbMinutes && 
-                   arrMinutes <= ankunftBisMinutes
-          } else {
-            // Zeitfenster über Mitternacht (z.B. 22–06 Uhr): Nachtverbindungen erlauben
-            if (isSameDay(depDate, arrDate)) {
-              // Abfahrt und Ankunft am selben Tag
-              return depMinutes >= abfahrtAbMinutes
-            } else if (isNextDay(depDate, arrDate)) {
-              // Ankunft am Folgetag
-              return depMinutes >= abfahrtAbMinutes && arrMinutes <= ankunftBisMinutes
-            }
-            return false
-          }
-        }
-        
-        // Nur abfahrtAb gesetzt
-        if (abfahrtAbMinutes !== null) {
-          return depMinutes >= abfahrtAbMinutes
-        }
-        
-        // Nur ankunftBis gesetzt
-        if (ankunftBisMinutes !== null) {
-          if (isSameDay(depDate, arrDate)) {
-            return arrMinutes <= ankunftBisMinutes
-          } else if (isNextDay(depDate, arrDate)) {
-            // Nachtverbindungen: nur wenn Abfahrt nach Ankunftszeit liegt
-            return arrMinutes <= ankunftBisMinutes && depMinutes > arrMinutes
-          }
-          return false
-        }
-        
-        // Kein Filter: alles erlauben
-        return true
+        return passesTimeFilter(interval.abfahrtsZeitpunkt, interval.ankunftsZeitpunkt, {
+          abfahrtAb: config.abfahrtAb,
+          abfahrtBis: config.abfahrtBis,
+          ankunftAb: config.ankunftAb,
+          ankunftBis: config.ankunftBis,
+        })
       })
       
       // Umstiegs-Filterung auf gecachte Daten anwenden
@@ -728,6 +671,8 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
     const timeFilteredIntervals = finalAllIntervals.filter(interval =>
       passesTimeFilter(interval.abfahrtsZeitpunkt, interval.ankunftsZeitpunkt, {
         abfahrtAb: config.abfahrtAb,
+        abfahrtBis: config.abfahrtBis,
+        ankunftAb: config.ankunftAb,
         ankunftBis: config.ankunftBis
       })
     )

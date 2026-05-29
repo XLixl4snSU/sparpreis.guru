@@ -10,9 +10,9 @@ export const dynamic = 'force-dynamic'
 
 const LOG_SCOPE = "urlaubsfinder.request"
 
-function formatTimeWindow(abfahrtAb?: string, ankunftBis?: string): string {
-  if (!abfahrtAb && !ankunftBis) return "beliebig"
-  return `${abfahrtAb || "beliebig"}-${ankunftBis || "beliebig"}`
+function formatTimeWindow(abfahrtAb?: string, abfahrtBis?: string, ankunftAb?: string, ankunftBis?: string): string {
+  if (!abfahrtAb && !abfahrtBis && !ankunftAb && !ankunftBis) return "beliebig"
+  return `Abfahrt ${abfahrtAb || "beliebig"}-${abfahrtBis || "beliebig"}, Ankunft ${ankunftAb || "beliebig"}-${ankunftBis || "beliebig"}`
 }
 
 interface JourneyLeg {
@@ -85,8 +85,12 @@ interface UrlauberfinderRequest {
   maximaleUmstiege?: string
   // Separate time filters for outward and return journeys
   outwardAbfahrtAb?: string
+  outwardAbfahrtBis?: string
+  outwardAnkunftAb?: string
   outwardAnkunftBis?: string
   returnAbfahrtAb?: string
+  returnAbfahrtBis?: string
+  returnAnkunftAb?: string
   returnAnkunftBis?: string
   umstiegszeit?: string
 }
@@ -165,8 +169,12 @@ export async function POST(request: NextRequest) {
       schnelleVerbindungen = true,
       maximaleUmstiege,
       outwardAbfahrtAb,
+      outwardAbfahrtBis,
+      outwardAnkunftAb,
       outwardAnkunftBis,
       returnAbfahrtAb,
+      returnAbfahrtBis,
+      returnAnkunftAb,
       returnAnkunftBis,
       umstiegszeit,
     } = body
@@ -185,8 +193,8 @@ export async function POST(request: NextRequest) {
       destinationCount: destinations.length,
       outwardDate,
       returnDate,
-      outwardTimeWindow: formatTimeWindow(outwardAbfahrtAb, outwardAnkunftBis),
-      returnTimeWindow: formatTimeWindow(returnAbfahrtAb, returnAnkunftBis),
+      outwardTimeWindow: formatTimeWindow(outwardAbfahrtAb, outwardAbfahrtBis, outwardAnkunftAb, outwardAnkunftBis),
+      returnTimeWindow: formatTimeWindow(returnAbfahrtAb, returnAbfahrtBis, returnAnkunftAb, returnAnkunftBis),
       maxTransfers: maximaleUmstiege ?? "alle",
       travelClass: klasse,
     })
@@ -260,9 +268,10 @@ export async function POST(request: NextRequest) {
           const [destName, destData] = destinationEntries[i]
           const destinationDisplayName = destData.displayName
 
-          // Send progress update for the currently processed destination
+          // Send progress update for the currently processed destination.
+          // processed counts finished destinations, so the first destination starts at 0.
           const progress = {
-            processed: i + 1,
+            processed: i,
             total: totalDestinations,
             destination: destinationDisplayName,
           }
@@ -285,6 +294,8 @@ export async function POST(request: NextRequest) {
               schnelleVerbindungen,
               maximaleUmstiege: maximaleUmstiege ? parseInt(maximaleUmstiege) : undefined,
               abfahrtAb: outwardAbfahrtAb,
+              abfahrtBis: outwardAbfahrtBis,
+              ankunftAb: outwardAnkunftAb,
               ankunftBis: outwardAnkunftBis,
               umstiegszeit,
             }
@@ -340,6 +351,8 @@ export async function POST(request: NextRequest) {
               schnelleVerbindungen,
               maximaleUmstiege: maximaleUmstiege ? parseInt(maximaleUmstiege) : undefined,
               abfahrtAb: returnAbfahrtAb,
+              abfahrtBis: returnAbfahrtBis,
+              ankunftAb: returnAnkunftAb,
               ankunftBis: returnAnkunftBis,
               umstiegszeit,
             }
@@ -438,6 +451,19 @@ export async function POST(request: NextRequest) {
               encoder.encode(`data: ${JSON.stringify({ 
                 type: 'error', 
                 message: `Error searching ${destName}` 
+              })}\n\n`)
+            )
+          }
+
+          if (!request.signal.aborted) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({
+                type: 'progress',
+                data: {
+                  processed: i + 1,
+                  total: totalDestinations,
+                  destination: destinationDisplayName,
+                },
               })}\n\n`)
             )
           }

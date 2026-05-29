@@ -23,7 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Checkbox } from "@/components/ui/checkbox"
-import { AlertTriangle, MapPin, Calendar, Settings, User, Train, Percent, Baby, X } from "lucide-react"
+import { AlertTriangle, MapPin, Calendar, Settings, User, Train, Percent, Baby, Clock, X } from "lucide-react"
 import { ICE_STATIONS, getDefaultStations } from "@/lib/stations/ice-stations"
 import { logError } from "@/lib/shared/logger"
 
@@ -50,8 +50,12 @@ export interface UrlauberfinderSearchParams {
   maximaleUmstiege?: string
   // Separate time filters for outward and return journeys
   outwardAbfahrtAb?: string
+  outwardAbfahrtBis?: string
+  outwardAnkunftAb?: string
   outwardAnkunftBis?: string
   returnAbfahrtAb?: string
+  returnAbfahrtBis?: string
+  returnAnkunftAb?: string
   returnAnkunftBis?: string
   umstiegszeit?: string
 }
@@ -80,6 +84,131 @@ const CURATED_SMALL_CITIES_PRESET = [
   "Erfurt Hbf",
   "Potsdam Hbf",
 ]
+
+interface TimeWindowControlsProps {
+  departureFromId: string
+  departureFrom: string
+  onDepartureFromChange: (value: string) => void
+  departureToId: string
+  departureTo: string
+  onDepartureToChange: (value: string) => void
+  arrivalFromId: string
+  arrivalFrom: string
+  onArrivalFromChange: (value: string) => void
+  arrivalToId: string
+  arrivalTo: string
+  onArrivalToChange: (value: string) => void
+}
+
+function TimeInput({
+  id,
+  label,
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  id: string
+  label: string
+  value: string
+  onChange: (value: string) => void
+  ariaLabel: string
+}) {
+  return (
+    <div className="min-w-0">
+      <Label htmlFor={id} className="mb-1 block text-xs font-medium text-gray-600">{label}</Label>
+      <div className="relative">
+        <Input
+          id={id}
+          type="time"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className={dateTimeCtrl}
+          aria-label={ariaLabel}
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+            aria-label={`${ariaLabel} zurücksetzen`}
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TimeWindowControls({
+  departureFromId,
+  departureFrom,
+  onDepartureFromChange,
+  departureToId,
+  departureTo,
+  onDepartureToChange,
+  arrivalFromId,
+  arrivalFrom,
+  onArrivalFromChange,
+  arrivalToId,
+  arrivalTo,
+  onArrivalToChange,
+}: TimeWindowControlsProps) {
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="min-w-0 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+          <div className="text-sm font-medium text-gray-600 mb-2 block">
+            <span className="inline-flex items-center gap-1">
+              <Clock className="w-4 h-4 text-blue-500" />
+              Abfahrt
+            </span>
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+            <TimeInput
+              id={departureFromId}
+              label="frühestens"
+              value={departureFrom}
+              onChange={onDepartureFromChange}
+              ariaLabel="Abfahrt frühestens"
+            />
+            <span className="mt-6 text-sm font-medium text-gray-500">-</span>
+            <TimeInput
+              id={departureToId}
+              label="spätestens"
+              value={departureTo}
+              onChange={onDepartureToChange}
+              ariaLabel="Abfahrt spätestens"
+            />
+          </div>
+        </div>
+        <div className="min-w-0 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+          <div className="text-sm font-medium text-gray-600 mb-2 block">
+            <span className="inline-flex items-center gap-1">
+              <Clock className="w-4 h-4 text-blue-500" />
+              Ankunft
+            </span>
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+            <TimeInput
+              id={arrivalFromId}
+              label="frühestens"
+              value={arrivalFrom}
+              onChange={onArrivalFromChange}
+              ariaLabel="Ankunft frühestens"
+            />
+            <span className="mt-6 text-sm font-medium text-gray-500">-</span>
+            <TimeInput
+              id={arrivalToId}
+              label="spätestens"
+              value={arrivalTo}
+              onChange={onArrivalToChange}
+              ariaLabel="Ankunft spätestens"
+            />
+          </div>
+      </div>
+    </div>
+  )
+}
 
 function normalizeDiscount(art: string, klasse: string): { art: string; klasse: string } {
   const normalizedArt =
@@ -168,8 +297,12 @@ export function UrlauberfinderSearchForm({
   
   // Separate time filters for outward and return journeys
   const [outwardAbfahrtAb, setOutwardAbfahrtAb] = useState(initialParams?.outwardAbfahrtAb || "")
+  const [outwardAbfahrtBis, setOutwardAbfahrtBis] = useState(initialParams?.outwardAbfahrtBis || "")
+  const [outwardAnkunftAb, setOutwardAnkunftAb] = useState(initialParams?.outwardAnkunftAb || "")
   const [outwardAnkunftBis, setOutwardAnkunftBis] = useState(initialParams?.outwardAnkunftBis || "")
   const [returnAbfahrtAb, setReturnAbfahrtAb] = useState(initialParams?.returnAbfahrtAb || "")
+  const [returnAbfahrtBis, setReturnAbfahrtBis] = useState(initialParams?.returnAbfahrtBis || "")
+  const [returnAnkunftAb, setReturnAnkunftAb] = useState(initialParams?.returnAnkunftAb || "")
   const [returnAnkunftBis, setReturnAnkunftBis] = useState(initialParams?.returnAnkunftBis || "")
   
   const [umstiegszeit, setUmstiegszeit] = useState(initialParams?.umstiegszeit || "normal")
@@ -356,8 +489,12 @@ export function UrlauberfinderSearchForm({
     setUmstiegsOption(mappedUmstiegsOption)
 
     setOutwardAbfahrtAb(initialParams.outwardAbfahrtAb || "")
+    setOutwardAbfahrtBis(initialParams.outwardAbfahrtBis || "")
+    setOutwardAnkunftAb(initialParams.outwardAnkunftAb || "")
     setOutwardAnkunftBis(initialParams.outwardAnkunftBis || "")
     setReturnAbfahrtAb(initialParams.returnAbfahrtAb || "")
+    setReturnAbfahrtBis(initialParams.returnAbfahrtBis || "")
+    setReturnAnkunftAb(initialParams.returnAnkunftAb || "")
     setReturnAnkunftBis(initialParams.returnAnkunftBis || "")
     setUmstiegszeit(initialParams.umstiegszeit || "normal")
   }, [initialParams])
@@ -394,8 +531,12 @@ export function UrlauberfinderSearchForm({
       schnelleVerbindungen,
       maximaleUmstiege: umstiegsOption === "alle" ? undefined : umstiegsOption === "direkt" ? "0" : umstiegsOption,
       outwardAbfahrtAb: outwardAbfahrtAb || undefined,
+      outwardAbfahrtBis: outwardAbfahrtBis || undefined,
+      outwardAnkunftAb: outwardAnkunftAb || undefined,
       outwardAnkunftBis: outwardAnkunftBis || undefined,
       returnAbfahrtAb: returnAbfahrtAb || undefined,
+      returnAbfahrtBis: returnAbfahrtBis || undefined,
+      returnAnkunftAb: returnAnkunftAb || undefined,
       returnAnkunftBis: returnAnkunftBis || undefined,
       umstiegszeit: umstiegszeit !== "normal" ? umstiegszeit : undefined,
     }
@@ -703,52 +844,20 @@ export function UrlauberfinderSearchForm({
                   className={dateTimeCtrl}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="min-w-0">
-                  <Label htmlFor="outwardAbfahrtAb" className="text-xs font-medium text-gray-600 mb-1 block">Abfahrt ab</Label>
-                  <div className="relative">
-                    <Input
-                      id="outwardAbfahrtAb"
-                      type="time"
-                      value={outwardAbfahrtAb}
-                      onChange={e => setOutwardAbfahrtAb(e.target.value)}
-                      className={dateTimeCtrl}
-                    />
-                    {outwardAbfahrtAb && (
-                      <button
-                        type="button"
-                        onClick={() => setOutwardAbfahrtAb("")}
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-                        aria-label="Zurücksetzen"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <Label htmlFor="outwardAnkunftBis" className="text-xs font-medium text-gray-600 mb-1 block">Ankunft bis</Label>
-                  <div className="relative">
-                    <Input
-                      id="outwardAnkunftBis"
-                      type="time"
-                      value={outwardAnkunftBis}
-                      onChange={e => setOutwardAnkunftBis(e.target.value)}
-                      className={dateTimeCtrl}
-                    />
-                    {outwardAnkunftBis && (
-                      <button
-                        type="button"
-                        onClick={() => setOutwardAnkunftBis("")}
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-                        aria-label="Zurücksetzen"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
+              <TimeWindowControls
+                departureFromId="outwardAbfahrtAb"
+                departureFrom={outwardAbfahrtAb}
+                onDepartureFromChange={setOutwardAbfahrtAb}
+                departureToId="outwardAbfahrtBis"
+                departureTo={outwardAbfahrtBis}
+                onDepartureToChange={setOutwardAbfahrtBis}
+                arrivalFromId="outwardAnkunftAb"
+                arrivalFrom={outwardAnkunftAb}
+                onArrivalFromChange={setOutwardAnkunftAb}
+                arrivalToId="outwardAnkunftBis"
+                arrivalTo={outwardAnkunftBis}
+                onArrivalToChange={setOutwardAnkunftBis}
+              />
             </div>
 
             {/* Rückfahrt block */}
@@ -766,52 +875,20 @@ export function UrlauberfinderSearchForm({
                     className={dateTimeCtrl}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="min-w-0">
-                    <Label htmlFor="returnAbfahrtAb" className="text-xs font-medium text-gray-600 mb-1 block">Abfahrt ab</Label>
-                    <div className="relative">
-                      <Input
-                        id="returnAbfahrtAb"
-                        type="time"
-                        value={returnAbfahrtAb}
-                        onChange={e => setReturnAbfahrtAb(e.target.value)}
-                        className={dateTimeCtrl}
-                      />
-                      {returnAbfahrtAb && (
-                        <button
-                          type="button"
-                          onClick={() => setReturnAbfahrtAb("")}
-                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-                          aria-label="Zurücksetzen"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <Label htmlFor="returnAnkunftBis" className="text-xs font-medium text-gray-600 mb-1 block">Ankunft bis</Label>
-                    <div className="relative">
-                      <Input
-                        id="returnAnkunftBis"
-                        type="time"
-                        value={returnAnkunftBis}
-                        onChange={e => setReturnAnkunftBis(e.target.value)}
-                        className={dateTimeCtrl}
-                      />
-                      {returnAnkunftBis && (
-                        <button
-                          type="button"
-                          onClick={() => setReturnAnkunftBis("")}
-                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-                          aria-label="Zurücksetzen"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                <TimeWindowControls
+                  departureFromId="returnAbfahrtAb"
+                  departureFrom={returnAbfahrtAb}
+                  onDepartureFromChange={setReturnAbfahrtAb}
+                  departureToId="returnAbfahrtBis"
+                  departureTo={returnAbfahrtBis}
+                  onDepartureToChange={setReturnAbfahrtBis}
+                  arrivalFromId="returnAnkunftAb"
+                  arrivalFrom={returnAnkunftAb}
+                  onArrivalFromChange={setReturnAnkunftAb}
+                  arrivalToId="returnAnkunftBis"
+                  arrivalTo={returnAnkunftBis}
+                  onArrivalToChange={setReturnAnkunftBis}
+                />
               </div>
             )}
           </div>

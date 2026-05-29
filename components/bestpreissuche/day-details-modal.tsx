@@ -473,6 +473,18 @@ export function DayDetailsModal({
                         Abfahrt ab: {searchParams.abfahrtAb} Uhr
                       </div>
                     )}
+                    {searchParams.abfahrtBis && (
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-4 h-4" />
+                        Abfahrt bis: {searchParams.abfahrtBis} Uhr
+                      </div>
+                    )}
+                    {searchParams.ankunftAb && (
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-4 h-4" />
+                        Ankunft ab: {searchParams.ankunftAb} Uhr
+                      </div>
+                    )}
                     {searchParams.ankunftBis && (
                       <div className="flex items-center gap-1">
                         <Clock className="w-4 h-4" />

@@ -89,7 +89,31 @@ export function generateConnectionId(
 
 interface TimeFilterConfig {
   abfahrtAb?: string
+  abfahrtBis?: string
+  ankunftAb?: string
   ankunftBis?: string
+}
+
+function parseTimeToMinutes(timeStr: string): number | null {
+  const [h, m] = timeStr.split(":").map(Number)
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null
+  return h * 60 + (m || 0)
+}
+
+function passesClockWindow(minutes: number, lower?: string, upper?: string): boolean {
+  const lowerMinutes = lower ? parseTimeToMinutes(lower) : null
+  const upperMinutes = upper ? parseTimeToMinutes(upper) : null
+
+  if (lowerMinutes !== null && upperMinutes !== null) {
+    if (lowerMinutes <= upperMinutes) {
+      return minutes >= lowerMinutes && minutes <= upperMinutes
+    }
+    return minutes >= lowerMinutes || minutes <= upperMinutes
+  }
+
+  if (lowerMinutes !== null) return minutes >= lowerMinutes
+  if (upperMinutes !== null) return minutes <= upperMinutes
+  return true
 }
 
 export function passesTimeFilter(
@@ -97,17 +121,12 @@ export function passesTimeFilter(
   ankunftsZeitpunkt: string,
   filters: TimeFilterConfig
 ): boolean {
-  if (!filters.abfahrtAb && !filters.ankunftBis) return true
+  if (!filters.abfahrtAb && !filters.abfahrtBis && !filters.ankunftAb && !filters.ankunftBis) return true
 
   const depDate = new Date(abfahrtsZeitpunkt)
   const arrDate = new Date(ankunftsZeitpunkt)
   const depMinutes = depDate.getHours() * 60 + depDate.getMinutes()
   const arrMinutes = arrDate.getHours() * 60 + arrDate.getMinutes()
-
-  const parseTimeToMinutes = (timeStr: string): number => {
-    const [h, m] = timeStr.split(":").map(Number)
-    return h * 60 + (m || 0)
-  }
 
   const abfahrtAbMinutes = filters.abfahrtAb ? parseTimeToMinutes(filters.abfahrtAb) : null
   const ankunftBisMinutes = filters.ankunftBis ? parseTimeToMinutes(filters.ankunftBis) : null
@@ -124,15 +143,19 @@ export function passesTimeFilter(
     return isSameDay(arrDate, nextDay)
   }
 
-  // Beide Filter gesetzt
-  if (abfahrtAbMinutes !== null && ankunftBisMinutes !== null) {
+  // Legacy semantics for the original cross-journey window:
+  // "Abfahrt ab" + "Ankunft bis" within a day excludes overnight arrivals.
+  if (
+    abfahrtAbMinutes !== null &&
+    ankunftBisMinutes !== null &&
+    !filters.abfahrtBis &&
+    !filters.ankunftAb
+  ) {
     if (abfahrtAbMinutes < ankunftBisMinutes) {
-      // Zeitfenster innerhalb eines Tages
       return isSameDay(depDate, arrDate) && 
              depMinutes >= abfahrtAbMinutes && 
              arrMinutes <= ankunftBisMinutes
     } else {
-      // Zeitfenster über Mitternacht
       if (isSameDay(depDate, arrDate)) {
         return depMinutes >= abfahrtAbMinutes
       } else if (isNextDay(depDate, arrDate)) {
@@ -142,19 +165,18 @@ export function passesTimeFilter(
     }
   }
 
-  // Nur abfahrtAb gesetzt
-  if (abfahrtAbMinutes !== null) {
-    return depMinutes >= abfahrtAbMinutes
+  if (!passesClockWindow(depMinutes, filters.abfahrtAb, filters.abfahrtBis)) {
+    return false
   }
 
-  // Nur ankunftBis gesetzt
-  if (ankunftBisMinutes !== null) {
-    if (isSameDay(depDate, arrDate)) {
-      return arrMinutes <= ankunftBisMinutes
-    } else if (isNextDay(depDate, arrDate)) {
-      return arrMinutes <= ankunftBisMinutes && depMinutes > arrMinutes
-    }
+  if (!passesClockWindow(arrMinutes, filters.ankunftAb, filters.ankunftBis)) {
     return false
+  }
+
+  // Preserve the original same-day guard when a daytime journey window is expressed
+  // across departure lower bound and arrival upper bound, even with extra bounds.
+  if (abfahrtAbMinutes !== null && ankunftBisMinutes !== null && abfahrtAbMinutes < ankunftBisMinutes) {
+    return isSameDay(depDate, arrDate)
   }
 
   return true

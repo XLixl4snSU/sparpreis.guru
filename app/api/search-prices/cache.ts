@@ -268,6 +268,8 @@ export function generateCacheKey(params: {
   klasse: string
   schnelleVerbindungen: boolean
   abfahrtAb?: string
+  abfahrtBis?: string
+  ankunftAb?: string
   ankunftBis?: string
   umstiegszeit?: string
 }): string {
@@ -590,6 +592,8 @@ export function getDayPriceHistory(
   connectionIds?: string[],
   timeFilters?: {
     abfahrtAb?: string
+    abfahrtBis?: string
+    ankunftAb?: string
     ankunftBis?: string
   }
 ): PriceHistoryEntry[] {
