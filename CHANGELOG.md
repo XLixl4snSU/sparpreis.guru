@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.1.2...v1.2.0) (2026-05-29)
+
+
+### Features
+
+* departure until and arrival from filters ([#49](https://github.com/XLixl4snSU/sparpreis.guru/issues/49)) ([fa1739e](https://github.com/XLixl4snSU/sparpreis.guru/commit/fa1739e849b9c0c07f338c1285d6b9af21299059))
+
+
+### Bug Fixes
+
+* CI docker build and performance issues ([fa1739e](https://github.com/XLixl4snSU/sparpreis.guru/commit/fa1739e849b9c0c07f338c1285d6b9af21299059))
+
 ## [1.1.2](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.1.1...v1.1.2) (2026-05-13)
 
 
