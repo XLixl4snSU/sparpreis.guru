@@ -89,12 +89,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      # Setze Version in package.json auf "dev-<Build-Datum>"
-      - name: Set package.json version to dev build date
-        run: |
-          BUILD_DATE="$(date -u +'%Y%m%d-%H%M%S')"
-          jq --arg version "dev-$BUILD_DATE" '.version=$version' package.json > package.tmp.json && mv package.tmp.json package.json
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
