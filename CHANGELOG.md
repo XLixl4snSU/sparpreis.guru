@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.1](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.2.0...v1.2.1) (2026-06-10)
+
+
+### Bug Fixes
+
+* correct arrival-only time filter behavior ([1345e52](https://github.com/XLixl4snSU/sparpreis.guru/commit/1345e52c14845867ea6ef6f916ba0c34b99e00b8))
+* fix Docker volume permissions for direct connection data ([1345e52](https://github.com/XLixl4snSU/sparpreis.guru/commit/1345e52c14845867ea6ef6f916ba0c34b99e00b8))
+* improve Docker production image and runtime setup ([1345e52](https://github.com/XLixl4snSU/sparpreis.guru/commit/1345e52c14845867ea6ef6f916ba0c34b99e00b8))
+* restore Bahn API requests on Node 24 ([1345e52](https://github.com/XLixl4snSU/sparpreis.guru/commit/1345e52c14845867ea6ef6f916ba0c34b99e00b8))
+
 ## [1.2.0](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.1.2...v1.2.0) (2026-05-29)
 
 
