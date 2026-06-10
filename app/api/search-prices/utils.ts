@@ -130,6 +130,7 @@ export function passesTimeFilter(
 
   const abfahrtAbMinutes = filters.abfahrtAb ? parseTimeToMinutes(filters.abfahrtAb) : null
   const ankunftBisMinutes = filters.ankunftBis ? parseTimeToMinutes(filters.ankunftBis) : null
+  const hasArrivalFilter = Boolean(filters.ankunftAb || filters.ankunftBis)
 
   const isSameDay = (date1: Date, date2: Date) => (
     date1.getFullYear() === date2.getFullYear() &&
@@ -166,6 +167,12 @@ export function passesTimeFilter(
   }
 
   if (!passesClockWindow(depMinutes, filters.abfahrtAb, filters.abfahrtBis)) {
+    return false
+  }
+
+  // Result days are departure days. Arrival-only filters such as "Ankunft bis 12:00"
+  // must not match trips arriving after midnight on the following calendar day.
+  if (hasArrivalFilter && !isSameDay(depDate, arrDate)) {
     return false
   }
 
