@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button"
 import { FAQPopup } from "@/components/layout/faq-popup"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue} from "@/components/ui/select"
-import { ArrowLeftRight, Train, User, Percent, Shuffle, ArrowRight, Ticket, Settings, MapPin, Calendar, Baby, Clock, Zap, AlertTriangle, Lightbulb, CheckCircle, Map, X } from "lucide-react"
+import { ArrowLeftRight, Train, User, Percent, Shuffle, ArrowRight, Ticket, Settings, MapPin, Calendar, Baby, Clock, Zap, AlertTriangle, Lightbulb, CheckCircle, Map, Info, X } from "lucide-react"
 import { logError } from "@/lib/shared/logger"
 
 const LOG_SCOPE = "bestpreissuche.search-form"
@@ -54,6 +55,25 @@ const DateTimeStyle = () => (
     }
   `}</style>
 );
+
+function TimeFilterInfoButton() {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm hover:border-blue-200 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          aria-label="Hinweis zu Zeitfiltern"
+        >
+          <Info className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 text-xs leading-relaxed text-gray-700">
+        Ankunftszeiten gelten für den Abfahrtstag. Für Nachtfahrten z.B. Abfahrt frühestens 22:00 und Ankunft spätestens 06:00 setzen.
+      </PopoverContent>
+    </Popover>
+  )
+}
 
 interface SearchParams {
   start?: string
@@ -689,7 +709,12 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
               </div>
             </div>
             {/* Zeitfilter - Optional */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-medium text-gray-600">Zeiten eingrenzen</div>
+                <TimeFilterInfoButton />
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="min-w-0 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
                 <div className="text-sm font-medium text-gray-600 mb-2 block">
                   <span className="inline-flex items-center gap-1">
@@ -807,6 +832,7 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
                     </div>
                   </div>
                 </div>
+              </div>
               </div>
             </div>
           </div>

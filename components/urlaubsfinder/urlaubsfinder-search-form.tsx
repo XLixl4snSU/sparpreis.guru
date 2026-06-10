@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { FAQPopup } from "@/components/layout/faq-popup"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Select,
   SelectContent,
@@ -23,7 +24,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Checkbox } from "@/components/ui/checkbox"
-import { AlertTriangle, MapPin, Calendar, Settings, User, Train, Percent, Baby, Clock, X } from "lucide-react"
+import { AlertTriangle, MapPin, Calendar, Settings, User, Train, Percent, Baby, Clock, Info, X } from "lucide-react"
 import { ICE_STATIONS, getDefaultStations } from "@/lib/stations/ice-stations"
 import { logError } from "@/lib/shared/logger"
 
@@ -140,6 +141,25 @@ function TimeInput({
   )
 }
 
+function TimeFilterInfoButton() {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm hover:border-blue-200 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          aria-label="Hinweis zu Zeitfiltern"
+        >
+          <Info className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 text-xs leading-relaxed text-gray-700">
+        Ankunftszeiten gelten für den Abfahrtstag. Für Nachtfahrten z.B. Abfahrt frühestens 22:00 und Ankunft spätestens 06:00 setzen.
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 function TimeWindowControls({
   departureFromId,
   departureFrom,
@@ -155,7 +175,12 @@ function TimeWindowControls({
   onArrivalToChange,
 }: TimeWindowControlsProps) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-medium text-gray-600">Zeiten eingrenzen</div>
+        <TimeFilterInfoButton />
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="min-w-0 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
           <div className="text-sm font-medium text-gray-600 mb-2 block">
             <span className="inline-flex items-center gap-1">
@@ -205,6 +230,7 @@ function TimeWindowControls({
               ariaLabel="Ankunft spätestens"
             />
           </div>
+      </div>
       </div>
     </div>
   )

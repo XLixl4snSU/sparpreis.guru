@@ -12,6 +12,7 @@ import {
 import { metricsCollector } from '@/app/api/metrics/collector'
 import { logDebug, logError, logWarn } from '@/lib/shared/logger'
 import { formatDateKey, generateConnectionId, passesTimeFilter } from './utils';
+import { fetchBahn } from './bahn-http'
 
 const LOG_SCOPE = "bestpreissuche.bahn"
 
@@ -57,9 +58,9 @@ export async function searchBahnhof(search: string): Promise<{ id: string; norma
 
     logDebug(LOG_SCOPE, "🌐 Station lookup via Bahn API started", { query: search })
 
-    let response: Response
+    let response: Awaited<ReturnType<typeof fetchBahn>>
     try {
-      response = await fetch(url, {
+      response = await fetchBahn(url, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:137.0) Gecko/20100101 Firefox/137.0",
           Accept: "application/json",
@@ -76,7 +77,7 @@ export async function searchBahnhof(search: string): Promise<{ id: string; norma
 
     if (!response.ok) return null
 
-    const data = await response.json()
+    const data = await response.json<Array<{ id: string; name: string }>>()
     if (!data || data.length === 0) return null
 
     const normalizedSearch = search.toLowerCase().trim()
@@ -425,7 +426,7 @@ export async function getBestPrice(config: any): Promise<{ result: TrainResults 
         requestId,
       })
       // Match the working curl headers exactly
-      const response = await fetch("https://www.bahn.de/web/api/angebote/tagesbestpreis", {
+      const response = await fetchBahn("https://www.bahn.de/web/api/angebote/tagesbestpreis", {
         method: "POST",
         headers: {
           Accept: "application/json",

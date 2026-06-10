@@ -9,6 +9,7 @@ import {
 import { globalRateLimiter } from '@/app/api/search-prices/rate-limiter'
 import { metricsCollector } from '@/app/api/metrics/collector'
 import { logDebug, logError, logWarn } from '@/lib/shared/logger'
+import { fetchBahn } from '@/app/api/search-prices/bahn-http'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -53,16 +54,16 @@ export async function GET(request: NextRequest) {
         lon?: number
         type?: string
         products?: string[]
-      }>>(
+      }> | { __httpStatus: number; __errorText: string }>(
         `station-search-${normalizedQuery}`,
         async () => {
           const encodedQuery = encodeURIComponent(normalizedQuery)
           const url = `https://www.bahn.de/web/api/reiseloesung/orte?suchbegriff=${encodedQuery}&typ=ALL&limit=10`
           const apiStartTime = Date.now()
           
-          let response: Response
+          let response: Awaited<ReturnType<typeof fetchBahn>>
           try {
-            response = await fetch(url, {
+            response = await fetchBahn(url, {
               headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept': 'application/json',
@@ -83,7 +84,15 @@ export async function GET(request: NextRequest) {
             throw new Error(`API error: ${response.status}`)
           }
           
-          return await response.json()
+          return await response.json<Array<{
+            extId: string
+            id: string
+            name: string
+            lat?: number
+            lon?: number
+            type?: string
+            products?: string[]
+          }>>()
         },
         'station-search' // Use a specific session ID for station searches
       )
@@ -128,6 +137,9 @@ export async function GET(request: NextRequest) {
       // Cache results (only valid ones)
       if (rankedResults.length > 0) {
         setCachedStationSearch(normalizedQuery, rankedResults)
+        for (const result of rankedResults) {
+          setCachedStationSearch(result.extId, [result])
+        }
       }
       
       return NextResponse.json({ results: rankedResults, cached: false })
