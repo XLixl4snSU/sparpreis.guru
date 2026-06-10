@@ -137,6 +137,9 @@ export async function GET(request: NextRequest) {
       // Cache results (only valid ones)
       if (rankedResults.length > 0) {
         setCachedStationSearch(normalizedQuery, rankedResults)
+        for (const result of rankedResults) {
+          setCachedStationSearch(result.extId, [result])
+        }
       }
       
       return NextResponse.json({ results: rankedResults, cached: false })
