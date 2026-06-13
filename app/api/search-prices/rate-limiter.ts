@@ -5,11 +5,9 @@ const LOG_SCOPE = "bahn-api.rate-limiter"
 
 /* Globales Rate Limiting für alle API-Calls
 Die Bahn-API hat strenge Limits, daher ist ein globales Rate Limiting notwendig.
-Kurzzeitig eine hohe Anzahl an Requests möglich, aber danach antwortet die API schnell mit 429-Fehlern (Too Many Requests).
-Daher beobachtet diese Funktion die letzten Requests und passt das Intervall dynamisch an, bei 429-Fehlern wird das Intervall auf bis zu 10 Sekunden erhöht.
-Das Ziel ist es möglichst keine 429-Fehler zu erhalten, um die Performance zu optimieren.
+Bei unerwarteten 429-Fehlern wird zusätzlich adaptiv gebremst.
 Wir verwenden eine Round-Robin-Queue für Sessions, um Requests effizient zu verarbeiten.
-
+In der Standardkonfiguration werden max. 30 Requests pro Minute zugelassen.
 */
 interface QueuedRequest {
   id: string
@@ -25,27 +23,28 @@ class GlobalRateLimiter {
   private sessionRoundRobin: string[] = [] // Round-Robin Liste der Sessions
   private currentSessionIndex = 0 // Aktueller Index im Round-Robin
   private lastApiCallStart = 0 // Wann der letzte API-Call GESTARTET wurde
-  private minInterval = 1000 // Adaptive: Startet bei 1.0 Sekunden zwischen API-Call STARTS
   private activeRequests = 0
-  private readonly maxConcurrentRequests = 3 // Max 3 parallele Requests für bessere Performance
   
   // Interne Cancel-Session Verwaltung
   private cancelledSessions = new Set<string>() // Cancelled Sessions
   
   // Konfiguration - konsolidiert für bessere Wartbarkeit
   private readonly config = {
-    baseInterval: 1000, // Basis-Intervall (1 Sekunde)
-    burstInterval: 2000, // Nach Burst-Limit: min. 2 Sekunden
-    burstLimitCount: 15, // Burst-Limit: 15 Requests (korrigiert von Kommentar)
-    burstLimitWindow: 30 * 1000, // 30 Sekunden (reduziert für bessere Performance)
-    sustainedInterval: Number(process.env.RL_SUSTAINED_INTERVAL_MS ?? 2000), // 2 Sekunden
-    sustainedLimitCount: Number(process.env.RL_SUSTAINED_COUNT ?? 25), // 25 Requests in 60 Sekunden (reduziert)
-    maxInterval: 6000, // Maximum 8 Sekunden (reduziert von 10s)
+    baseInterval: Number(process.env.RL_BASE_INTERVAL_MS ?? 450),
+    rollingLimitCount: Number(process.env.RL_ROLLING_LIMIT_COUNT ?? 30),
+    rollingLimitWindow: Number(process.env.RL_ROLLING_LIMIT_WINDOW_MS ?? 60 * 1000),
+    rollingLimitSafetyBuffer: Number(process.env.RL_ROLLING_LIMIT_SAFETY_MS ?? 1000),
+    pacingStartCount: Number(process.env.RL_PACING_START_COUNT ?? 10),
+    minPacedInterval: Number(process.env.RL_MIN_PACED_INTERVAL_MS ?? 1250),
+    maxInterval: Number(process.env.RL_MAX_INTERVAL_MS ?? 12000),
     maxRetries: 3,
     cleanupInterval: 15000, // 15 Sekunden (erhöht für weniger CPU-Last)
     sessionCancelTimeout: 3 * 60 * 1000, // 3 Minuten (reduziert)
     completedSessionTimeout: 30 * 1000 // 30 Sekunden (reduziert)
   }
+
+  private minInterval = this.config.baseInterval
+  private readonly maxConcurrentRequests = Number(process.env.RL_MAX_CONCURRENT_REQUESTS ?? 3)
   
   // Request-Tracking für DB-API Limits
   private requestHistory: number[] = [] // Timestamps der letzten Requests
@@ -109,13 +108,21 @@ class GlobalRateLimiter {
     // Berechne wann der nächste Request starten kann
     const now = Date.now()
     const timeSinceLastStart = now - this.lastApiCallStart
-    const delay = Math.max(0, this.minInterval - timeSinceLastStart)
+    const intervalDelay = Math.max(0, this.minInterval - timeSinceLastStart)
+    const pacingDelay = this.getRollingWindowPacingDelay(now)
+    const rollingWindowDelay = this.getRollingWindowDelay(now)
+    const delay = Math.max(intervalDelay, pacingDelay, rollingWindowDelay)
 
     logDebug(LOG_SCOPE, "Next request processing scheduled", {
       delayMs: delay,
+      intervalDelayMs: intervalDelay,
+      pacingDelayMs: pacingDelay,
+      rollingWindowDelayMs: rollingWindowDelay,
       activeRequests: this.activeRequests,
       maxConcurrentRequests: this.maxConcurrentRequests,
       intervalMs: this.minInterval,
+      rollingLimitCount: this.config.rollingLimitCount,
+      rollingLimitWindowMs: this.config.rollingLimitWindow,
     })
     this.processingTimer = setTimeout(() => {
       this.processingTimer = null
@@ -484,16 +491,94 @@ class GlobalRateLimiter {
 
   private calculateRetryDelay(retryCount: number): number {
     // Exponential backoff: 2s, 4s, 8s
-    return Math.min(2000 * Math.pow(2, retryCount), 8000)
+    const exponentialDelay = Math.min(2000 * Math.pow(2, retryCount), 8000)
+    const now = Date.now()
+    return Math.max(
+      exponentialDelay,
+      this.getRollingWindowPacingDelay(now),
+      this.getRollingWindowDelay(now)
+    )
   }
 
   // Neue Methode: Request-Tracking für intelligente Rate-Limits
   private trackRequest(timestamp: number) {
     this.requestHistory.push(timestamp)
     
-    // Behalte nur Requests der letzten 2 Minuten
-    const twoMinutesAgo = timestamp - (2 * 60 * 1000)
-    this.requestHistory = this.requestHistory.filter(t => t > twoMinutesAgo)
+    // Behalte etwas mehr als das Rolling Window für Logging und Retry-Entscheidungen.
+    const retentionAgo = timestamp - Math.max(2 * 60 * 1000, this.config.rollingLimitWindow * 2)
+    this.requestHistory = this.requestHistory.filter(t => t > retentionAgo)
+  }
+
+  private getRollingWindowDelay(now: number): number {
+    const windowStart = now - this.config.rollingLimitWindow
+    this.requestHistory = this.requestHistory.filter(t => t > windowStart)
+
+    if (this.requestHistory.length < this.config.rollingLimitCount) {
+      return 0
+    }
+
+    const oldestRequest = Math.min(...this.requestHistory)
+    const nextAllowedAt = oldestRequest + this.config.rollingLimitWindow + this.config.rollingLimitSafetyBuffer
+    const delay = Math.max(0, nextAllowedAt - now)
+
+    if (delay > 0) {
+      logInfo(LOG_SCOPE, "Rolling rate limit budget exhausted; delaying next request", {
+        delayMs: delay,
+        requestsInWindow: this.requestHistory.length,
+        rollingLimitCount: this.config.rollingLimitCount,
+        rollingLimitWindowMs: this.config.rollingLimitWindow,
+      })
+    }
+
+    return delay
+  }
+
+  private getRollingWindowPacingInterval(now: number): number {
+    const windowStart = now - this.config.rollingLimitWindow
+    const requestsInWindow = this.requestHistory.filter(t => t > windowStart)
+
+    if (requestsInWindow.length < this.config.pacingStartCount) {
+      return this.config.baseInterval
+    }
+
+    const remainingSlots = this.config.rollingLimitCount - requestsInWindow.length
+    if (remainingSlots <= 0) {
+      return this.config.maxInterval
+    }
+
+    const oldestRequest = Math.min(...requestsInWindow)
+    const elapsedWindowMs = Math.max(0, now - oldestRequest)
+    const remainingWindowMs = Math.max(
+      0,
+      this.config.rollingLimitWindow + this.config.rollingLimitSafetyBuffer - elapsedWindowMs
+    )
+
+    return Math.max(
+      this.config.minPacedInterval,
+      Math.ceil(remainingWindowMs / remainingSlots)
+    )
+  }
+
+  private getRollingWindowPacingDelay(now: number): number {
+    const targetInterval = this.getRollingWindowPacingInterval(now)
+    if (targetInterval <= this.config.baseInterval) {
+      return 0
+    }
+
+    const timeSinceLastStart = now - this.lastApiCallStart
+    const delay = Math.max(0, targetInterval - timeSinceLastStart)
+
+    if (delay > 0) {
+      logDebug(LOG_SCOPE, "Rolling rate limit pacing active", {
+        delayMs: delay,
+        targetIntervalMs: targetInterval,
+        requestsInWindow: this.requestHistory.filter(t => t > now - this.config.rollingLimitWindow).length,
+        pacingStartCount: this.config.pacingStartCount,
+        rollingLimitCount: this.config.rollingLimitCount,
+      })
+    }
+
+    return delay
   }
 
   // Neue Methode: Intelligente Rate-Limit Bestimmung
@@ -501,72 +586,23 @@ class GlobalRateLimiter {
     const now = Date.now()
     
     // Cleanup alte Requests aus Historie
-    const twoMinutesAgo = now - (2 * 60 * 1000)
-    this.requestHistory = this.requestHistory.filter(t => t > twoMinutesAgo)
-    
-    // Prüfe Burst-Limit innerhalb des Fensters (z.B. 15 in 30s)
-    const burstAgo = now - this.config.burstLimitWindow
-    const requestsInBurst = this.requestHistory.filter(t => t > burstAgo).length
-    
-    // Prüfe Sustained-Limit innerhalb von 60 Sekunden (z.B. 30 in 60s)
-    const sixtySecondsAgo = now - (60 * 1000)
-    const requestsIn60Seconds = this.requestHistory.filter(t => t > sixtySecondsAgo).length
-    
-    let targetInterval = this.minInterval // Start mit aktuellem Intervall
-    let limitReason = ""
-    
-    // Sustained-Limit hat Priorität (strengeres Limit)
-    if (requestsIn60Seconds >= this.config.sustainedLimitCount) {
-      const threshold = this.config.sustainedInterval
-      // Nur erhöhen, niemals senken bei Limits
-      if (threshold > this.minInterval) {
-        targetInterval = threshold
-        limitReason = `Sustained limit: ${requestsIn60Seconds}/${this.config.sustainedLimitCount} requests in 60s`
-      } else {
-        // Bereits über dem Schwellenwert – nichts ändern
-        logDebug(LOG_SCOPE, "Sustained limit reached; keeping current interval", {
-          intervalMs: this.minInterval,
-          thresholdMs: threshold,
-          requestsIn60Seconds,
-        })
-        return
-      }
-    } else if (requestsInBurst >= this.config.burstLimitCount) {
-      const threshold = this.config.burstInterval
-      // Nur erhöhen, niemals senken bei Limits
-      if (threshold > this.minInterval) {
-        targetInterval = threshold
-        const windowSec = Math.round(this.config.burstLimitWindow / 1000)
-        limitReason = `Burst limit: ${requestsInBurst}/${this.config.burstLimitCount} requests in ${windowSec}s`
-      } else {
-        // Bereits über dem Schwellenwert – nichts ändern
-        logDebug(LOG_SCOPE, "Burst limit reached; keeping current interval", {
-          intervalMs: this.minInterval,
-          thresholdMs: threshold,
-          requestsInBurst,
-        })
-        return
-      }
-    } else {
-      // Langsam zurück zum Basis-Intervall wenn unter den Limits
-      if (this.minInterval > this.config.baseInterval) {
-        targetInterval = Math.max(this.minInterval * 0.9, this.config.baseInterval)
-        limitReason = "Slowly reducing interval"
-      } else {
-        // Kein Update nötig - bereits am Base-Intervall
-        return
-      }
+    const retentionAgo = now - Math.max(2 * 60 * 1000, this.config.rollingLimitWindow * 2)
+    this.requestHistory = this.requestHistory.filter(t => t > retentionAgo)
+
+    if (this.minInterval <= this.config.baseInterval) {
+      return
     }
+
+    const targetInterval = Math.max(this.minInterval * 0.9, this.config.baseInterval)
     
     // Update nur wenn sich etwas geändert hat (min. 50ms)
     if (Math.abs(targetInterval - this.minInterval) > 50) {
       logInfo(LOG_SCOPE, "Rate limit interval adjusted", {
         previousIntervalMs: this.minInterval,
         nextIntervalMs: Math.round(targetInterval),
-        reason: limitReason,
-        requestsInBurstWindow: requestsInBurst,
-        burstWindowSeconds: Math.round(this.config.burstLimitWindow / 1000),
-        requestsIn60Seconds,
+        reason: "Recovering after previous rate limit backoff",
+        requestsInRollingWindow: this.requestHistory.filter(t => t > now - this.config.rollingLimitWindow).length,
+        rollingWindowSeconds: Math.round(this.config.rollingLimitWindow / 1000),
         trackedRequests: this.requestHistory.length,
       })
       this.minInterval = Math.round(targetInterval)
@@ -694,7 +730,8 @@ class GlobalRateLimiter {
     
     // Geschätzte Wartezeit basierend auf Round-Robin
     const waitingRequests = ownPosition !== null ? ownPosition : 0
-    const estimatedWaitTime = hasOwnRequest ? waitingRequests * (this.minInterval / 1000) : 0
+    const effectiveInterval = Math.max(this.minInterval, this.getRollingWindowPacingInterval(Date.now()))
+    const estimatedWaitTime = hasOwnRequest ? waitingRequests * (effectiveInterval / 1000) : 0
     
     const result = {
       queueSize: totalQueueSize,

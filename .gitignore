@@ -30,3 +30,4 @@ package-lock.json
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+scripts/measure-bahn-rate-limit.mjs

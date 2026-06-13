@@ -307,7 +307,7 @@ export function ConnectionsTable({
                           toggleExpanded(index)
                           if (expandedItems.has(`preisverlauf-${index}`)) toggleExpanded(`preisverlauf-${index}`)
                         }}
-                        className={`h-9 text-xs ${!interval.priceHistory || interval.priceHistory.length <= 1 ? 'col-span-2' : ''}`}
+                        className="h-9 text-xs"
                       >
                         <Train className="h-3.5 w-3.5 mr-1.5" />
                         {expandedItems.has(index) ? 'Weniger' : 'Fahrtverlauf'}

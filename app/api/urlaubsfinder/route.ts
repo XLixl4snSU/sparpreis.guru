@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getBestPrice, searchBahnhof } from '@/app/api/search-prices/bahn-api'
+import { globalRateLimiter } from '@/app/api/search-prices/rate-limiter'
 import { metricsCollector } from '@/app/api/metrics/collector'
 import { ICE_STATIONS } from '@/lib/stations/ice-stations'
 import { isUrlaubsfinderEnabled } from '@/lib/shared/feature-flags'
@@ -150,6 +151,7 @@ function getJourneyTimes(data: JourneyPriceData) {
 
 export async function POST(request: NextRequest) {
   const searchStartTime = Date.now()
+  const sessionId = crypto.randomUUID()
 
   if (!isUrlaubsfinderEnabled()) {
     return NextResponse.json({ error: 'Urlaubsfinder is disabled' }, { status: 404 })
@@ -189,6 +191,7 @@ export async function POST(request: NextRequest) {
     metricsCollector.recordUrlaubsfinderSearch(destinations.length)
 
     logInfo(LOG_SCOPE, "🏖️ Urlaubsfinder gestartet", {
+      sessionId,
       homeStation,
       destinationCount: destinations.length,
       outwardDate,
@@ -255,29 +258,63 @@ export async function POST(request: NextRequest) {
         const unavailableDestinations: UnavailableDestination[] = []
         const destinationEntries = Array.from(destinationMap.entries())
         const totalDestinations = destinationEntries.length
+        let completedDestinations = 0
+        let isStreamClosed = false
 
-        for (let i = 0; i < destinationEntries.length; i++) {
+        const abortHandler = () => {
+          globalRateLimiter.cancelSession(sessionId, 'user_request')
+        }
+        request.signal.addEventListener('abort', abortHandler, { once: true })
+
+        const safeEnqueue = (payload: unknown) => {
+          if (isStreamClosed || request.signal.aborted) return false
+
+          try {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)
+            )
+            return true
+          } catch {
+            isStreamClosed = true
+            globalRateLimiter.cancelSession(sessionId, 'user_request')
+            return false
+          }
+        }
+
+        const processDestination = async (
+          entry: [string, {
+            id: string
+            normalizedId: string
+            name: string
+            displayName: string
+            lat?: number
+            lon?: number
+          }],
+          index: number
+        ) => {
           if (request.signal.aborted) {
-            logDebug(LOG_SCOPE, "Client disconnected; stopping Urlaubsfinder destination processing", {
-              processedDestinations: i,
-              totalDestinations,
-            })
-            break
+            return
           }
 
-          const [destName, destData] = destinationEntries[i]
+          const [destName, destData] = entry
           const destinationDisplayName = destData.displayName
 
-          // Send progress update for the currently processed destination.
-          // processed counts finished destinations, so the first destination starts at 0.
-          const progress = {
-            processed: i,
-            total: totalDestinations,
+          safeEnqueue({
+            type: 'progress',
+            data: {
+              processed: completedDestinations,
+              queued: index + 1,
+              total: totalDestinations,
+              destination: destinationDisplayName,
+            },
+          })
+
+          logDebug(LOG_SCOPE, "Urlaubsfinder destination queued", {
+            sessionId,
             destination: destinationDisplayName,
-          }
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: 'progress', data: progress })}\n\n`)
-          )
+            queuedDestination: index + 1,
+            total: totalDestinations,
+          })
           
           try {
             // Fetch outward journey prices
@@ -287,6 +324,7 @@ export async function POST(request: NextRequest) {
               startStationNormalizedId: homeStationData.normalizedId,
               zielStationNormalizedId: destData.normalizedId,
               anfrageDatum: new Date(outwardDate), // Convert to Date object
+              sessionId,
               alter,
               ermaessigungArt,
               ermaessigungKlasse,
@@ -300,21 +338,54 @@ export async function POST(request: NextRequest) {
               umstiegszeit,
             }
 
-            const outwardResult = await getBestPrice(outwardConfig)
-
-            if (request.signal.aborted) {
-              logDebug(LOG_SCOPE, "Client disconnected after outward search; stopping Urlaubsfinder", {
-                destination: destinationDisplayName,
-                outwardDate,
-              })
-              break
-            }
+            const outwardResultPromise = getBestPrice(outwardConfig)
 
             let outwardPrice = 0
             let outwardDeparture = ""
             let outwardArrival = ""
             let outwardTransfers = 0
             let outwardLegs: JourneyLeg[] = []
+
+            let returnPrice = 0
+            let returnDeparture = ""
+            let returnArrival = ""
+            let returnTransfers = 0
+            let returnLegs: JourneyLeg[] = []
+            let returnResultPromise: ReturnType<typeof getBestPrice> | Promise<null> = Promise.resolve(null)
+
+            // Fetch return journey if return date is provided
+            if (returnDate) {
+              const returnConfig = {
+                abfahrtsHalt: destData.id,
+                ankunftsHalt: homeStationData.id,
+                startStationNormalizedId: destData.normalizedId,
+                zielStationNormalizedId: homeStationData.normalizedId,
+                anfrageDatum: new Date(returnDate), // Convert to Date object
+                sessionId,
+                alter,
+                ermaessigungArt,
+                ermaessigungKlasse,
+                klasse,
+                schnelleVerbindungen,
+                maximaleUmstiege: maximaleUmstiege ? parseInt(maximaleUmstiege) : undefined,
+                abfahrtAb: returnAbfahrtAb,
+                abfahrtBis: returnAbfahrtBis,
+                ankunftAb: returnAnkunftAb,
+                ankunftBis: returnAnkunftBis,
+                umstiegszeit,
+              }
+
+              returnResultPromise = getBestPrice(returnConfig)
+            }
+
+            const [outwardResult, returnResult] = await Promise.all([
+              outwardResultPromise,
+              returnResultPromise,
+            ])
+
+            if (request.signal.aborted) {
+              return
+            }
 
             if (outwardResult?.result) {
               // Find the entry for the requested date
@@ -330,43 +401,7 @@ export async function POST(request: NextRequest) {
               }
             }
 
-            let returnPrice = 0
-            let returnDeparture = ""
-            let returnArrival = ""
-            let returnTransfers = 0
-            let returnLegs: JourneyLeg[] = []
-
-            // Fetch return journey if return date is provided
             if (returnDate) {
-              const returnConfig = {
-              abfahrtsHalt: destData.id,
-              ankunftsHalt: homeStationData.id,
-              startStationNormalizedId: destData.normalizedId,
-              zielStationNormalizedId: homeStationData.normalizedId,
-              anfrageDatum: new Date(returnDate), // Convert to Date object
-              alter,
-              ermaessigungArt,
-              ermaessigungKlasse,
-              klasse,
-              schnelleVerbindungen,
-              maximaleUmstiege: maximaleUmstiege ? parseInt(maximaleUmstiege) : undefined,
-              abfahrtAb: returnAbfahrtAb,
-              abfahrtBis: returnAbfahrtBis,
-              ankunftAb: returnAnkunftAb,
-              ankunftBis: returnAnkunftBis,
-              umstiegszeit,
-            }
-
-            const returnResult = await getBestPrice(returnConfig)
-
-              if (request.signal.aborted) {
-                logDebug(LOG_SCOPE, "Client disconnected after return search; stopping Urlaubsfinder", {
-                  destination: destinationDisplayName,
-                  returnDate,
-                })
-                break
-              }
-
               if (returnResult?.result) {
                 const dateKey = returnDate // The key will be in YYYY-MM-DD format
                 const returnData = returnResult.result[dateKey]
@@ -412,9 +447,7 @@ export async function POST(request: NextRequest) {
               results.push(newResult)
 
               // Stream this result immediately so the UI updates live
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ type: 'result', data: newResult })}\n\n`)
-              )
+              safeEnqueue({ type: 'result', data: newResult })
             } else {
               let reason = 'Keine verwertbare Verbindung gefunden'
               if (returnDate) {
@@ -436,43 +469,68 @@ export async function POST(request: NextRequest) {
                 returnPrice: returnDate && hasReturn ? returnPrice : undefined,
               }
               unavailableDestinations.push(unavailableEntry)
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ type: 'unavailable', data: unavailableEntry })}\n\n`)
-              )
+              safeEnqueue({ type: 'unavailable', data: unavailableEntry })
             }
 
           } catch (error) {
+            if (error instanceof Error && error.message.includes('was cancelled')) {
+              return
+            }
+
             logError(LOG_SCOPE, "Urlaubsfinder destination search failed", error, {
               destination: destName,
               outwardDate,
               returnDate,
             })
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ 
-                type: 'error', 
-                message: `Error searching ${destName}` 
-              })}\n\n`)
-            )
-          }
+            safeEnqueue({
+              type: 'error',
+              message: `Error searching ${destName}`,
+            })
+          } finally {
+            completedDestinations++
 
-          if (!request.signal.aborted) {
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({
+            if (!request.signal.aborted) {
+              safeEnqueue({
                 type: 'progress',
                 data: {
-                  processed: i + 1,
+                  processed: completedDestinations,
                   total: totalDestinations,
                   destination: destinationDisplayName,
                 },
-              })}\n\n`)
-            )
+              })
+            }
           }
+        }
+
+        logInfo(LOG_SCOPE, "Urlaubsfinder destination price requests queued in parallel", {
+          sessionId,
+          destinations: totalDestinations,
+          priceRequests: totalDestinations * (returnDate ? 2 : 1),
+        })
+
+        await Promise.all(
+          destinationEntries.map((entry, index) => processDestination(entry, index))
+        )
+
+        if (request.signal.aborted) {
+          logDebug(LOG_SCOPE, "Client disconnected; stopping Urlaubsfinder destination processing", {
+            sessionId,
+            processedDestinations: completedDestinations,
+            totalDestinations,
+          })
+          request.signal.removeEventListener('abort', abortHandler)
+          try {
+            controller.close()
+          } catch {}
+          isStreamClosed = true
+          return
         }
 
         // Sort by total price
         results.sort((a, b) => a.totalPrice - b.totalPrice)
 
         logInfo(LOG_SCOPE, "✅ Urlaubsfinder abgeschlossen", {
+          sessionId,
           outwardDate,
           returnDate,
           foundDestinations: results.length,
@@ -486,21 +544,16 @@ export async function POST(request: NextRequest) {
           unavailableDestinations.length
         )
 
-        if (request.signal.aborted) {
-          try {
-            controller.close()
-          } catch {}
-          return
-        }
+        globalRateLimiter.cancelSession(sessionId, 'search_completed')
+        request.signal.removeEventListener('abort', abortHandler)
 
         // Send final results
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ type: 'results', data: results })}\n\n`)
-        )
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ type: 'unavailables', data: unavailableDestinations })}\n\n`)
-        )
-        controller.close()
+        safeEnqueue({ type: 'results', data: results })
+        safeEnqueue({ type: 'unavailables', data: unavailableDestinations })
+        if (!isStreamClosed) {
+          controller.close()
+          isStreamClosed = true
+        }
       },
     })
 
