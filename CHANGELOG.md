@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.2](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.2.1...v1.2.2) (2026-06-13)
+
+
+### Bug Fixes
+
+* Add session & parallelization to Urlaubsfinder ([a1ebb69](https://github.com/XLixl4snSU/sparpreis.guru/commit/a1ebb697e3cc6fcc016ad143a413ce37abd5110b))
+* Fahrtverlauf/Preisentwicklung Button misalignment on mobile devices ([a1ebb69](https://github.com/XLixl4snSU/sparpreis.guru/commit/a1ebb697e3cc6fcc016ad143a413ce37abd5110b))
+* improve rate limiting and therefore search speed ([a1ebb69](https://github.com/XLixl4snSU/sparpreis.guru/commit/a1ebb697e3cc6fcc016ad143a413ce37abd5110b))
+* improve search speed and Urlaubsfinder performance ([a1ebb69](https://github.com/XLixl4snSU/sparpreis.guru/commit/a1ebb697e3cc6fcc016ad143a413ce37abd5110b))
+
 ## [1.2.1](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.2.0...v1.2.1) (2026-06-10)
 
 
