@@ -1,6 +1,6 @@
 {
   "name": "sparpreis.guru",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "private": true,
   "packageManager": "pnpm@11.5.3",
   "scripts": {
