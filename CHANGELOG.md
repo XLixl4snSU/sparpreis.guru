@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.3](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.2.2...v1.2.3) (2026-06-15)
+
+
+### Bug Fixes
+
+* stabilize station suggestion ids ([2b04a57](https://github.com/XLixl4snSU/sparpreis.guru/commit/2b04a57c5d4b5e6235396793185159c128b9ed9e))
+* stabilize station suggestion ids ([004f707](https://github.com/XLixl4snSU/sparpreis.guru/commit/004f7075d3061f00a62e3c6fcf1937379e47a145))
+
 ## [1.2.2](https://github.com/XLixl4snSU/sparpreis.guru/compare/v1.2.1...v1.2.2) (2026-06-13)
 
 
