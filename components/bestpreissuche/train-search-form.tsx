@@ -442,16 +442,16 @@ export function TrainSearchForm({ searchParams }: TrainSearchFormProps) {
       }
     }
     
-    // Resolve start station if it's an ID
-    if (startId) {
+    // Resolve station IDs from URL params only. A freshly selected suggestion already
+    // has the correct label and must not be overwritten by another lookup.
+    if (startId && !start.trim()) {
       resolveStationId(startId, 'start')
     }
     
-    // Resolve destination station if it's an ID
-    if (zielId) {
+    if (zielId && !ziel.trim()) {
       resolveStationId(zielId, 'ziel')
     }
-  }, [startId, zielId]) // Run when IDs are available
+  }, [startId, zielId, start, ziel])
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
