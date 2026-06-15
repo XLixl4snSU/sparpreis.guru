@@ -674,6 +674,15 @@ export function getConnectionPriceHistory(params: {
 // Station Cache - NUR SQLite, kein in-memory mehr
 // getCachedStation ist jetzt ein Wrapper für getCachedStationSearch
 export function getCachedStation(search: string): { id: string; normalizedId: string; name: string } | null {
+  const parsedLocation = parseBahnLocationId(search)
+  if (parsedLocation) {
+    return {
+      id: search,
+      normalizedId: parsedLocation.normalizedId,
+      name: parsedLocation.name,
+    }
+  }
+
   const results = getCachedStationSearch(search)
   
   if (!results || results.length === 0) {
@@ -700,7 +709,7 @@ export function getCachedStation(search: string): { id: string; normalizedId: st
 // setCachedStation ist jetzt ein Wrapper für setCachedStationSearch
 export function setCachedStation(search: string, data: { id: string; normalizedId: string; name: string }): void {
   const result: StationSearchResult = {
-    extId: data.id, // extId und id sind bei Einzelstation-Lookup gleich
+    extId: getStableStationExtId({ extId: data.id, id: data.id }),
     id: data.id,
     name: data.name
   }
@@ -725,8 +734,60 @@ export interface StationSearchResult {
   products?: string[]
 }
 
+function decodeBahnLocationPart(value: string): string {
+  try {
+    return decodeURIComponent(value.replace(/\+/g, ' '))
+  } catch {
+    return value.replace(/\+/g, ' ')
+  }
+}
+
+function parseBahnLocationId(value: string): { extId: string; name: string; normalizedId: string } | null {
+  const trimmed = value.trim()
+  if (!trimmed.startsWith('A=') || !trimmed.includes('@O=') || !trimmed.includes('@L=')) {
+    return null
+  }
+
+  const extId = trimmed.match(/@L=([^@]+)@/)?.[1]
+  const rawName = trimmed.match(/@O=([^@]+)@/)?.[1]
+
+  if (!extId || !rawName) {
+    return null
+  }
+
+  return {
+    extId,
+    name: decodeBahnLocationPart(rawName),
+    normalizedId: trimmed.replace(/@p=\d+@/g, '@'),
+  }
+}
+
+export function getStableStationExtId(station: { extId?: string | null; id?: string | null }): string {
+  const extId = station.extId?.trim()
+  const id = station.id?.trim()
+
+  if (extId) {
+    return parseBahnLocationId(extId)?.extId ?? extId
+  }
+
+  if (id) {
+    return parseBahnLocationId(id)?.extId ?? id
+  }
+
+  return ''
+}
+
 export function getCachedStationSearch(searchTerm: string): StationSearchResult[] | null {
   try {
+    const parsedLocation = parseBahnLocationId(searchTerm)
+    if (parsedLocation) {
+      return [{
+        extId: parsedLocation.extId,
+        id: searchTerm,
+        name: parsedLocation.name,
+      }]
+    }
+
     const normalizedTerm = searchTerm.toLowerCase().trim()
     const rows = stmtGetStationSearch.all(normalizedTerm) as Array<{
       ext_id: string
@@ -743,7 +804,7 @@ export function getCachedStationSearch(searchTerm: string): StationSearchResult[
     }
     
     return rows.map(row => ({
-      extId: row.ext_id,
+      extId: getStableStationExtId({ extId: row.ext_id, id: row.station_id }),
       id: row.station_id,
       name: row.name,
       lat: row.lat ?? undefined,
@@ -811,7 +872,8 @@ export function recordStationSearchClick(
   station: Pick<StationSearchResult, 'extId' | 'name'>
 ): void {
   try {
-    if (!station.extId || !station.name) {
+    const stationExtId = getStableStationExtId({ extId: station.extId })
+    if (!stationExtId || !station.name) {
       return
     }
 
@@ -823,7 +885,7 @@ export function recordStationSearchClick(
     const now = Date.now()
     const recordClick = db.transaction(() => {
       for (const prefix of prefixes) {
-        stmtRecordStationSearchClick.run(prefix, station.extId, station.name, now)
+        stmtRecordStationSearchClick.run(prefix, stationExtId, station.name, now)
       }
     })
 
@@ -843,8 +905,10 @@ export function setCachedStationSearch(searchTerm: string, results: StationSearc
     const now = Date.now()
     
     results.forEach((result, index) => {
+      const stableExtId = getStableStationExtId(result)
+
       // Skip stations without extId (required field)
-      if (!result.extId || result.extId.trim() === '') {
+      if (!stableExtId) {
         logWarn(LOG_SCOPE, "Skipped station search result without extId", {
           query: normalizedTerm,
           stationName: result.name,
@@ -854,7 +918,7 @@ export function setCachedStationSearch(searchTerm: string, results: StationSearc
       
       stmtInsertStationSearch.run(
         normalizedTerm,
-        result.extId,
+        stableExtId,
         result.id || result.extId, // Fallback to extId if id is missing
         result.name,
         result.lat ?? null,

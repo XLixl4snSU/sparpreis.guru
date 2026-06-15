@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
   getCachedStationSearch,
+  getStableStationExtId,
   rankStationSearchResults,
   recordStationSearchClick,
   setCachedStationSearch,
@@ -67,6 +68,8 @@ export async function GET(request: NextRequest) {
               headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept': 'application/json',
+                'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
+                'Referer': 'https://www.bahn.de/',
               },
             })
           } catch (error) {
@@ -124,7 +127,7 @@ export async function GET(request: NextRequest) {
           return true
         })
         .map(station => ({
-          extId: station.extId,
+          extId: getStableStationExtId(station),
           id: station.id || station.extId, // Fallback to extId if id is missing
           name: station.name,
           lat: station.lat,
